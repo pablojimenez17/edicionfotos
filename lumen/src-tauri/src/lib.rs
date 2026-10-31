@@ -25,6 +25,7 @@ pub fn run() {
             commands::export::write_export_tile,
             commands::export::finish_export_session,
             commands::raw::extract_raw_preview,
+            commands::raw::decode_raw_16bit,
         ])
         .setup(|app| {
             // Ensure the previews cache directory exists

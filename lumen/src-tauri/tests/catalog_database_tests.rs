@@ -429,3 +429,17 @@ async fn test_benchmark_sqlite_1000_photos_batch_insert() {
     println!("\n>>> RUST SQLITE BENCHMARK: 1,000 photos inserted with FTS5 triggers in {:?}", duration);
 }
 
+#[test]
+fn test_rawloader_interface_and_white_balance_extraction() {
+    use lumen_lib::commands::raw::is_raw_file;
+    use std::path::Path;
+
+    assert!(is_raw_file(Path::new("photo.CR2")));
+    assert!(is_raw_file(Path::new("photo.NEF")));
+    assert!(is_raw_file(Path::new("photo.ARW")));
+    assert!(is_raw_file(Path::new("photo.DNG")));
+    assert!(!is_raw_file(Path::new("photo.PNG")));
+    assert!(!is_raw_file(Path::new("photo.JPG")));
+}
+
+

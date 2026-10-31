@@ -29,6 +29,45 @@ pub const RAW_EXTENSIONS: &[&str] = &[
     "srw", "x3f", "3fr", "rwl", "mrw",
 ];
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RawDecoded16Bit {
+    pub width: u32,
+    pub height: u32,
+    pub wb_multipliers: [f32; 3],
+    pub color_matrix: Vec<Vec<f32>>,
+    pub camera_make: String,
+    pub camera_model: String,
+    pub is_raw: bool,
+}
+
+pub fn decode_raw_file_metadata(file_path: &Path) -> Result<RawDecoded16Bit, String> {
+    let raw = rawloader::decode_file(file_path).map_err(|e| format!("rawloader error: {:?}", e))?;
+    
+    // Normalise WB multipliers relative to Green
+    let g = if raw.wb_coeffs[1] > 0.0 { raw.wb_coeffs[1] } else { 1.0 };
+    let wb = [
+        raw.wb_coeffs[0] / g,
+        1.0,
+        raw.wb_coeffs[2] / g,
+    ];
+
+    let matrix: Vec<Vec<f32>> = raw
+        .xyz_to_cam
+        .iter()
+        .map(|row| row.to_vec())
+        .collect();
+
+    Ok(RawDecoded16Bit {
+        width: raw.width as u32,
+        height: raw.height as u32,
+        wb_multipliers: wb,
+        color_matrix: matrix,
+        camera_make: raw.make,
+        camera_model: raw.model,
+        is_raw: true,
+    })
+}
+
 pub fn is_raw_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -220,3 +259,14 @@ pub async fn extract_raw_preview(
         is_raw: true,
     })
 }
+
+/// Tauri command: Decodes full 16-bit RAW sensor data with rawloader.
+#[tauri::command]
+pub async fn decode_raw_16bit(file_path: String) -> Result<RawDecoded16Bit, String> {
+    let path = Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File does not exist: {}", file_path));
+    }
+    decode_raw_file_metadata(path)
+}
+
