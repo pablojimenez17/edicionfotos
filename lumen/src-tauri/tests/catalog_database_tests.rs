@@ -613,6 +613,160 @@ fn test_lensfun_xml_parsing_and_distortion_profile() {
     assert!((nikon.k1 - (-0.0285)).abs() < 1e-6);
 }
 
+#[tokio::test]
+async fn test_benchmark_200_jpegs_and_24mp_export() {
+    use lumen_lib::commands::import::import_folder;
+    use lumen_lib::commands::export::{create_export_session, write_export_tile, finish_export_session};
+    use std::fs;
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+    use image::codecs::jpeg::JpegEncoder;
+    use image::RgbImage;
+
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let temp_root = std::env::temp_dir().join(format!("lumen_bench_200_{}", nonce));
+    let photos_dir = temp_root.join("photos_200");
+    let thumbs_dir = temp_root.join("thumbs_200");
+    fs::create_dir_all(&photos_dir).expect("Create photos bench dir");
+    fs::create_dir_all(&thumbs_dir).expect("Create thumbs bench dir");
+
+    // Synthesize 200 valid JPEG files on disk (800x600 pixels each)
+    let synth_start = Instant::now();
+    for i in 1..=200 {
+        let photo_path = photos_dir.join(format!("DSC_{:04}.jpg", i));
+        let img = RgbImage::from_fn(800, 600, |x, y| {
+            let r = ((x * 255) / 800) as u8;
+            let g = ((y * 255) / 600) as u8;
+            let b = ((i * 7) % 255) as u8;
+            image::Rgb([r, g, b])
+        });
+        let mut file = fs::File::create(&photo_path).expect("Create JPEG file");
+        let mut encoder = JpegEncoder::new_with_quality(&mut file, 85);
+        encoder.encode(img.as_raw(), 800, 600, image::ColorType::Rgb8.into()).unwrap();
+    }
+    let synth_duration = synth_start.elapsed();
+
+    // 1. Benchmark: Scan and parse 200 real JPEG files (size, hash, metadata)
+    let scan_start = Instant::now();
+    let (folder_name, scanned) = import_folder(photos_dir.to_string_lossy().to_string())
+        .await
+        .expect("Scan 200 JPEG files");
+    let scan_duration = scan_start.elapsed();
+    assert_eq!(scanned.len(), 200, "Must scan exactly 200 JPEG files");
+
+    // 2. Benchmark: Batch insert 200 photos into SQLite catalog with FTS5 triggers
+    let pool = setup_test_db().await;
+    let db_start = Instant::now();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO root_folders (id, path, name) VALUES (1, ?, ?)")
+        .bind(photos_dir.to_string_lossy().to_string())
+        .bind(&folder_name)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO folders (id, root_id, rel_path, name) VALUES (1, 1, '', 'root')")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    for (idx, p) in scanned.iter().enumerate() {
+        let id = (idx + 1) as i64;
+        sqlx::query(
+            "INSERT INTO photos (id, folder_id, filename, file_path, file_size, file_hash, width, height, format) \
+             VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(id)
+        .bind(&p.filename)
+        .bind(&p.rel_path)
+        .bind(p.file_size as i64)
+        .bind(&p.file_hash)
+        .bind(p.width as i64)
+        .bind(p.height as i64)
+        .bind(&p.format)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+    let db_duration = db_start.elapsed();
+
+    let fts_count: i64 = sqlx::query("SELECT COUNT(*) FROM photos_fts")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(fts_count, 200);
+
+    // 3. Benchmark: Generate 200 thumbnails (256px Lanczos3 resize & JPEG write)
+    let thumb_start = Instant::now();
+    for (idx, p) in scanned.iter().enumerate() {
+        let src_path = photos_dir.join(&p.filename);
+        let dst_path = thumbs_dir.join(format!("{}.jpg", idx + 1));
+        let img = image::open(&src_path).expect("Open source JPEG");
+        let thumb = img.thumbnail(256, 256);
+        thumb.save(&dst_path).expect("Save thumbnail");
+    }
+    let thumb_duration = thumb_start.elapsed();
+
+    // 4. Benchmark: 24 Megapixel Tiled Export (6000 x 4000) with ICC and EXIF injection
+    let export_start = Instant::now();
+    let total_w = 6000u32;
+    let total_h = 4000u32;
+    let session_id = format!("bench_24mp_session_{}", nonce);
+    create_export_session(session_id.clone(), total_w, total_h).expect("Create 24 MP export session");
+
+    // 6 tiles (2000 x 2000)
+    let tile_w = 2000u32;
+    let tile_h = 2000u32;
+    for ty in 0..2 {
+        for tx in 0..3 {
+            let x = tx * tile_w;
+            let y = ty * tile_h;
+            let w = tile_w.min(total_w - x);
+            let h = tile_h.min(total_h - y);
+            // 8-bit RGBA dummy tile buffer
+            let tile_bytes = vec![140u8; (w * h * 4) as usize];
+            write_export_tile(session_id.clone(), x, y, w, h, tile_bytes)
+                .expect("Write 24 MP tile");
+        }
+    }
+
+    let exported_24mp = temp_root.join("exported_24mp.jpg").to_string_lossy().to_string();
+    let exif_data = b"Exif\0\0II*\0\x08\0\0\0\x01\0\x05\x01\x02\0\x06\0\0\0Lumen\0".to_vec();
+    let saved_path = finish_export_session(
+        session_id,
+        exported_24mp.clone(),
+        "jpg".to_string(),
+        92,
+        None,
+        Some("sRGB".to_string()),
+        Some(exif_data),
+    ).expect("Finish 24 MP export session");
+    let export_duration = export_start.elapsed();
+
+    let exported_size = fs::metadata(&saved_path).expect("24 MP file metadata").len();
+    assert!(exported_size > 500_000, "24 MP JPEG must be > 500 KB");
+
+    // Pretty print benchmark results for point 9
+    println!("\n=======================================================");
+    println!("  LUMEN REAL BENCHMARK RESULTS (cargo test -- --nocapture)");
+    println!("=======================================================");
+    println!("1. Creación de 200 JPEGs de prueba (800x600):  {:?}", synth_duration);
+    println!("2. Escaneo, hash SHA-256 y metadata (200 fotos): {:?}", scan_duration);
+    println!("   -> Velocidad de escaneo:                     {:.1} fotos/segundo", 200.0 / scan_duration.as_secs_f64());
+    println!("3. Inserción SQLite + Triggers FTS5 (200 fotos): {:?}", db_duration);
+    println!("   -> Tiempo por foto en catálogo:              {:.2} ms/foto", (db_duration.as_secs_f64() * 1000.0) / 200.0);
+    println!("4. Generación y guardado de 200 miniaturas:    {:?}", thumb_duration);
+    println!("   -> Tiempo por miniatura (256px Lanczos):     {:.2} ms/miniatura ({:.1} thumbs/s)", (thumb_duration.as_secs_f64() * 1000.0) / 200.0, 200.0 / thumb_duration.as_secs_f64());
+    println!("5. Exportación teselada foto 24 MP (6000x4000): {:?}", export_duration);
+    println!("   -> Tamaño JPEG final (con ICC y EXIF):       {:.2} MB", exported_size as f64 / (1024.0 * 1024.0));
+    println!("   -> Rendimiento de exportación 24 MP:         {:.1} MPixels/s", 24.0 / export_duration.as_secs_f64());
+    println!("=======================================================\n");
+
+    // Cleanup temp dir
+    fs::remove_dir_all(&temp_root).ok();
+}
+
+
 
 
 
