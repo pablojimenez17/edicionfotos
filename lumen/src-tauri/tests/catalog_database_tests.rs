@@ -442,4 +442,89 @@ fn test_rawloader_interface_and_white_balance_extraction() {
     assert!(!is_raw_file(Path::new("photo.JPG")));
 }
 
+#[test]
+fn test_img_parts_icc_and_exif_injection() {
+    use img_parts::jpeg::Jpeg;
+    use img_parts::{ImageEXIF, ImageICC, Bytes};
+
+    // Minimal valid 1x1 JPEG bytes
+    let mut minimal_jpeg = Vec::new();
+    let img = image::RgbImage::new(1, 1);
+    image::codecs::jpeg::JpegEncoder::new(&mut minimal_jpeg)
+        .encode(img.as_raw(), 1, 1, image::ColorType::Rgb8.into())
+        .unwrap();
+
+    let mut jpeg = Jpeg::from_bytes(Bytes::from(minimal_jpeg)).expect("Parse JPEG with img-parts");
+
+    // Inject ICC Profile (e.g. sRGB marker)
+    let dummy_icc = Bytes::from_static(b"LUMEN_SRGB_ICC_PROFILE_V2_DATA");
+    jpeg.set_icc_profile(Some(dummy_icc.clone()));
+
+    // Inject EXIF payload
+    let dummy_exif = Bytes::from_static(b"Exif\0\0II*\0\x08\0\0\0\0\0\0\0");
+    jpeg.set_exif(Some(dummy_exif.clone()));
+
+    // Serialize back to bytes
+    let mut output = Vec::new();
+    jpeg.encoder().write_to(&mut output).expect("Encode JPEG with ICC & EXIF");
+
+    // Re-read with img-parts and assert ICC and EXIF are present!
+    let reread_jpeg = Jpeg::from_bytes(Bytes::from(output)).expect("Re-read written JPEG");
+    assert_eq!(reread_jpeg.icc_profile(), Some(dummy_icc));
+    assert_eq!(reread_jpeg.exif(), Some(dummy_exif));
+}
+
+#[test]
+fn test_export_jpeg_with_icc_profile_and_exif_reread() {
+    use lumen_lib::commands::export::{create_export_session, write_export_tile, finish_export_session};
+    use img_parts::jpeg::Jpeg;
+    use img_parts::{ImageEXIF, ImageICC, Bytes};
+    use std::fs;
+
+    let session_id = "test_export_icc_session".to_string();
+    create_export_session(session_id.clone(), 100, 100).expect("Create session");
+
+    // 100x100 RGBA8 tile (40000 bytes)
+    let tile_rgba = vec![180u8; 100 * 100 * 4];
+    write_export_tile(session_id.clone(), 0, 0, 100, 100, tile_rgba).expect("Write tile");
+
+    let out_dir = std::env::temp_dir().join("lumen_test_exports");
+    fs::create_dir_all(&out_dir).ok();
+    let out_file = out_dir.join("test_p3_export.jpg").to_string_lossy().to_string();
+
+    let exif_payload = b"Exif\0\0II*\0\x08\0\0\0\x01\0\x05\x01\x02\0\x06\0\0\0Lumen\0".to_vec();
+
+    finish_export_session(
+        session_id,
+        out_file.clone(),
+        "jpeg".to_string(),
+        90,
+        None,
+        Some("display-p3".to_string()),
+        Some(exif_payload.clone()),
+    ).expect("Finish export session");
+
+    // Read back exported JPEG file
+    let file_bytes = fs::read(&out_file).expect("Read exported file");
+    let jpeg = Jpeg::from_bytes(Bytes::from(file_bytes)).expect("Parse exported JPEG");
+
+    // Verify ICC profile was embedded
+    let icc_opt = jpeg.icc_profile();
+    assert!(icc_opt.is_some(), "ICC profile must be embedded in APP2 marker");
+    let icc_bytes = icc_opt.unwrap();
+    assert!(icc_bytes.len() > 128, "ICC profile must be a valid structure");
+    let icc_str = String::from_utf8_lossy(&icc_bytes);
+    assert!(icc_str.contains("Display P3") || icc_bytes.windows(4).any(|w| w == b"LUMN"), "ICC profile must contain Display P3 / Lumen tag");
+
+    // Verify EXIF metadata was embedded
+    let exif_opt = jpeg.exif();
+    assert!(exif_opt.is_some(), "EXIF metadata must be embedded in APP1 marker");
+    assert_eq!(exif_opt.unwrap().as_ref(), exif_payload.as_slice());
+
+    // Clean up
+    fs::remove_file(&out_file).ok();
+}
+
+
+
 

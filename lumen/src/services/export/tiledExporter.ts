@@ -171,6 +171,8 @@ export async function exportPhotoTiled(
     format: options.format,
     quality: options.quality,
     watermarkText: options.watermarkText || null,
+    colorSpace: options.colorSpace || 'srgb',
+    exifBytes: null,
   });
 
   return savedPath;

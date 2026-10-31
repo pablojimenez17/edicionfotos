@@ -76,8 +76,12 @@ pub fn write_export_tile(
     Ok(())
 }
 
+use img_parts::jpeg::Jpeg;
+use img_parts::{ImageEXIF, ImageICC};
+use crate::commands::icc::get_icc_profile;
+
 /// Finalizes the export session: optionally applies text watermark,
-/// encodes to chosen image format (JPEG, PNG, TIFF, WebP), and writes to disk.
+/// encodes to chosen image format (JPEG, PNG, TIFF, WebP), embeds ICC & EXIF, and writes to disk.
 #[tauri::command]
 pub fn finish_export_session(
     session_id: String,
@@ -85,6 +89,8 @@ pub fn finish_export_session(
     format: String,
     quality: u8,
     watermark_text: Option<String>,
+    color_space: Option<String>,
+    exif_bytes: Option<Vec<u8>>,
 ) -> Result<String, String> {
     let mut sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
     let session = sessions
@@ -106,15 +112,13 @@ pub fn finish_export_session(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    let file = File::create(path).map_err(|e| format!("Failed to create export file: {}", e))?;
-    let mut writer = BufWriter::new(file);
-
     let fmt = format.to_lowercase();
     match fmt.as_str() {
         "jpeg" | "jpg" => {
             let q = quality.clamp(1, 100);
             let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
-            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, q);
+            let mut raw_jpeg = Vec::new();
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut raw_jpeg, q);
             encoder
                 .encode(
                     rgb_img.as_raw(),
@@ -123,8 +127,31 @@ pub fn finish_export_session(
                     ColorType::Rgb8.into(),
                 )
                 .map_err(|e| format!("JPEG encoding failed: {}", e))?;
+
+            let mut jpeg = Jpeg::from_bytes(img_parts::Bytes::from(raw_jpeg))
+                .map_err(|e| format!("img-parts JPEG parse failed: {}", e))?;
+
+            // 1. Embed ICC Profile (sRGB, Display P3, AdobeRGB)
+            let cs = color_space.as_deref().unwrap_or("srgb");
+            if let Some(icc) = get_icc_profile(cs) {
+                jpeg.set_icc_profile(Some(icc));
+            }
+
+            // 2. Embed EXIF / IPTC metadata
+            if let Some(exif_data) = exif_bytes {
+                if !exif_data.is_empty() {
+                    jpeg.set_exif(Some(img_parts::Bytes::from(exif_data)));
+                }
+            }
+
+            let file = File::create(path).map_err(|e| format!("Failed to create export file: {}", e))?;
+            let mut writer = BufWriter::new(file);
+            jpeg.encoder().write_to(&mut writer)
+                .map_err(|e| format!("JPEG img-parts write failed: {}", e))?;
         }
         "png" => {
+            let file = File::create(path).map_err(|e| format!("Failed to create export file: {}", e))?;
+            let mut writer = BufWriter::new(file);
             let encoder = image::codecs::png::PngEncoder::new(&mut writer);
             encoder
                 .write_image(
@@ -136,6 +163,8 @@ pub fn finish_export_session(
                 .map_err(|e| format!("PNG encoding failed: {}", e))?;
         }
         "tiff" | "tif" => {
+            let file = File::create(path).map_err(|e| format!("Failed to create export file: {}", e))?;
+            let mut writer = BufWriter::new(file);
             let encoder = image::codecs::tiff::TiffEncoder::new(&mut writer);
             encoder
                 .write_image(
