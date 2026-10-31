@@ -318,3 +318,55 @@ fn test_raw_bayer_demosaicing() {
     assert!(b > 50, "Blue channel must be reconstructed from raw data");
 }
 
+#[tokio::test]
+async fn test_benchmark_sqlite_1000_photos_batch_insert() {
+    let pool = setup_test_db().await;
+
+    sqlx::query("INSERT INTO root_folders (id, path, name) VALUES (1, 'C:/Photos', 'Main')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO folders (id, root_id, rel_path, name) VALUES (1, 1, '2024', '2024')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let start = std::time::Instant::now();
+    let mut tx = pool.begin().await.unwrap();
+
+    for i in 1..=1000 {
+        let filename = format!("DSC_{:05}.ARW", i);
+        let rel_path = format!("2024/DSC_{:05}.ARW", i);
+        sqlx::query(
+            "INSERT INTO photos (id, folder_id, filename, file_path, width, height, rating, date_taken) \
+             VALUES (?, 1, ?, ?, 6000, 4000, 3, '2024-05-18T14:30:00Z')"
+        )
+        .bind(i)
+        .bind(&filename)
+        .bind(&rel_path)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
+
+    tx.commit().await.unwrap();
+    let duration = start.elapsed();
+
+    // Verify all 1,000 photos exist in photos and photos_fts
+    let photo_count: i64 = sqlx::query("SELECT COUNT(*) FROM photos")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(photo_count, 1000);
+
+    let fts_count: i64 = sqlx::query("SELECT COUNT(*) FROM photos_fts")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(fts_count, 1000);
+
+    println!("\n>>> RUST SQLITE BENCHMARK: 1,000 photos inserted with FTS5 triggers in {:?}", duration);
+}
+
