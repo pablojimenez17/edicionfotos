@@ -168,13 +168,32 @@ float hashNoise(vec2 p) {
 }
 
 void main() {
+  vec2 coord = v_texCoord;
+  if (u_lensDistortion != 0.0) {
+    // Polynomial lens distortion correction (poly3 / poly5):
+    // r_distorted = r * (1 + k1 * r^2)
+    vec2 centered = coord - vec2(0.5);
+    float r2 = dot(centered, centered);
+    float factor = 1.0 + u_lensDistortion * r2;
+    coord = vec2(0.5) + centered * factor;
+  }
+
   // Discard fragments outside [0, 1] range after crop/geometry transform
-  if (v_texCoord.x < 0.0 || v_texCoord.x > 1.0 || v_texCoord.y < 0.0 || v_texCoord.y > 1.0) {
+  if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0) {
     fragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
   }
 
-  vec4 srcColor = texture(u_image, v_texCoord);
+  vec4 srcColor;
+  if (u_removeCA) {
+    vec2 c = coord - vec2(0.5);
+    float r = texture(u_image, vec2(0.5) + c * 0.9994).r;
+    float g = texture(u_image, coord).g;
+    float b = texture(u_image, vec2(0.5) + c * 1.0006).b;
+    srcColor = vec4(r, g, b, 1.0);
+  } else {
+    srcColor = texture(u_image, coord);
+  }
   vec3 rgb = srgbToLinear(srcColor.rgb);
 
   // 1. Exposure adjustment (in linear space: E = color * 2^EV)

@@ -28,6 +28,7 @@ pub fn run() {
             commands::raw::decode_raw_16bit,
             commands::book::generate_photobook_pdf,
             commands::web::export_web_gallery_to_disk,
+            commands::lensfun::find_lens_profile,
         ])
         .setup(|app| {
             // Ensure the previews cache directory exists

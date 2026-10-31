@@ -584,6 +584,36 @@ fn test_pdf_photobook_and_web_gallery_export() {
     fs::remove_dir_all(&exported_web).ok();
 }
 
+#[test]
+fn test_lensfun_xml_parsing_and_distortion_profile() {
+    use lumen_lib::commands::lensfun::{parse_lensfun_profile, find_lens_profile, LENSFUN_DATABASE_XML};
+
+    // 1. Sony 24-70mm at 24mm (poly5 distortion model)
+    let profile_sony = parse_lensfun_profile(LENSFUN_DATABASE_XML, "Sony", "24-70mm", 24.0)
+        .expect("Lensfun profile for Sony 24-70mm at 24mm must be found");
+
+    assert_eq!(profile_sony.maker, "Sony");
+    assert!(profile_sony.model.contains("24-70mm"));
+    assert_eq!(profile_sony.distortion_model, "poly5");
+    assert!((profile_sony.k1 - (-0.0315)).abs() < 1e-6);
+    assert!((profile_sony.k2 - 0.0082).abs() < 1e-6);
+    assert!(profile_sony.ca_kr > 0.0);
+
+    // 2. Canon RF 24-70mm at 50mm (poly3 distortion model)
+    let profile_canon = parse_lensfun_profile(LENSFUN_DATABASE_XML, "Canon", "24-70mm", 50.0)
+        .expect("Lensfun profile for Canon RF 24-70mm at 50mm must be found");
+    assert_eq!(profile_canon.distortion_model, "poly3");
+    assert!((profile_canon.k1 - 0.0082).abs() < 1e-6);
+
+    // 3. Command interface find_lens_profile
+    let cmd_result = find_lens_profile("Nikon".to_string(), "24-70mm".to_string(), 24.0);
+    assert!(cmd_result.is_some());
+    let nikon = cmd_result.unwrap();
+    assert_eq!(nikon.distortion_model, "poly5");
+    assert!((nikon.k1 - (-0.0285)).abs() < 1e-6);
+}
+
+
 
 
 

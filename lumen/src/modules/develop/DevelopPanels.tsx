@@ -1048,8 +1048,52 @@ function LensCorrectionsEditor() {
     updateSetting('lensCorrections', { ...lc, ...patch }, 'Correcciones de lente');
   };
 
+  const handleProfileSelect = (preset: string) => {
+    if (preset === 'sony2470') {
+      update({ distortion: 31, removeChromaticAberration: true, lensVignette: 20 });
+    } else if (preset === 'sony1635') {
+      update({ distortion: 48, removeChromaticAberration: true, lensVignette: 35 });
+    } else if (preset === 'canon2470') {
+      update({ distortion: 30, removeChromaticAberration: true, lensVignette: 18 });
+    } else if (preset === 'nikon2470') {
+      update({ distortion: 28, removeChromaticAberration: true, lensVignette: 15 });
+    } else if (preset === 'sigma2470') {
+      update({ distortion: 34, removeChromaticAberration: true, lensVignette: 22 });
+    } else {
+      update({ distortion: 0, lensVignette: 0 });
+    }
+  };
+
   return (
     <div>
+      <div style={{ marginBottom: '10px' }}>
+        <label style={{ fontSize: '11px', color: '#a1a1aa', display: 'block', marginBottom: '4px' }}>
+          Perfil de lente calibrado (Lensfun)
+        </label>
+        <select
+          aria-label="Perfil de lente calibrado"
+          style={{
+            width: '100%',
+            background: '#27272a',
+            border: '1px solid #3f3f46',
+            borderRadius: '4px',
+            color: '#e4e4e7',
+            fontSize: '11px',
+            padding: '4px 6px',
+            outline: 'none',
+          }}
+          onChange={(e) => handleProfileSelect(e.target.value)}
+          defaultValue="manual"
+        >
+          <option value="manual">Manual / Sin perfil</option>
+          <option value="sony2470">Sony FE 24-70mm F2.8 GM II @ 24mm</option>
+          <option value="sony1635">Sony FE 16-35mm F2.8 GM @ 16mm</option>
+          <option value="canon2470">Canon RF 24-70mm F2.8L IS USM @ 24mm</option>
+          <option value="nikon2470">Nikon NIKKOR Z 24-70mm f/2.8 S @ 24mm</option>
+          <option value="sigma2470">Sigma 24-70mm F2.8 DG DN Art @ 24mm</option>
+        </select>
+      </div>
+
       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#e4e4e7', cursor: 'pointer', marginBottom: '10px' }}>
         <input
           type="checkbox"
@@ -1080,6 +1124,10 @@ function LensCorrectionsEditor() {
         onChange={(v) => update({ lensVignette: v })}
         onReset={() => update({ lensVignette: 0 })}
       />
+
+      <div style={{ marginTop: '10px', padding: '6px 8px', background: '#18181b', border: '1px solid #27272a', borderRadius: '4px', fontSize: '9px', color: '#71717a', lineHeight: 1.4 }}>
+        ℹ️ Perfiles de corrección óptica basados en la base de datos <strong>Lensfun</strong> (Licencia <em>CC-BY-SA 3.0 / LGPL v3</em>).
+      </div>
     </div>
   );
 }

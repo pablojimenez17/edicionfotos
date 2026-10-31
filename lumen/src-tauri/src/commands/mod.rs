@@ -6,4 +6,5 @@ pub mod thumbnail;
 pub mod icc;
 pub mod book;
 pub mod web;
+pub mod lensfun;
 
