@@ -293,6 +293,65 @@ async fn test_unique_indexes_and_history_cap() {
     assert_eq!(history_count.get::<i64, _>(0), 100, "History steps must be capped at 100");
 }
 
+#[tokio::test]
+async fn test_history_cumulative_size_cap_keeps_most_recent() {
+    let pool = setup_test_db().await;
+
+    sqlx::query("INSERT INTO root_folders (id, path, name) VALUES (1, 'C:/Photos', 'Main')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO folders (id, root_id, rel_path, name) VALUES (1, 1, '2024', '2024')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO photos (id, folder_id, filename, file_path) VALUES (10, 1, 'heavy.jpg', '2024/heavy.jpg')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 20 MB string payload (20_000_000 bytes)
+    let payload_20mb = "x".repeat(20_000_000);
+
+    // Step 1: 20 MB
+    sqlx::query("INSERT INTO history_steps (photo_id, step_index, label, settings) VALUES (10, 1, 'Step 1', ?)")
+        .bind(&payload_20mb)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Step 2: 20 MB (total 40 MB <= 50 MB)
+    sqlx::query("INSERT INTO history_steps (photo_id, step_index, label, settings) VALUES (10, 2, 'Step 2', ?)")
+        .bind(&payload_20mb)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let count_2 = sqlx::query("SELECT COUNT(*) FROM history_steps WHERE photo_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert_eq!(count_2, 2, "Both 20MB steps must fit within 50MB");
+
+    // Step 3: 20 MB (total 60 MB > 50 MB)
+    // Most recent step 3 (20MB) and step 2 (cumul 40MB) survive.
+    // Step 1 (cumul 60MB > 50MB) must be deleted!
+    sqlx::query("INSERT INTO history_steps (photo_id, step_index, label, settings) VALUES (10, 3, 'Step 3', ?)")
+        .bind(&payload_20mb)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let remaining_steps = sqlx::query("SELECT step_index FROM history_steps WHERE photo_id = 10 ORDER BY step_index ASC")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+    let indices: Vec<i64> = remaining_steps.iter().map(|r| r.get(0)).collect();
+    assert_eq!(indices, vec![2, 3], "Step 1 must be deleted, leaving the 2 most recent steps (2 and 3)");
+}
+
 #[test]
 fn test_raw_bayer_demosaicing() {
     use lumen_lib::commands::raw::{demosaic_bilinear, BayerPattern};

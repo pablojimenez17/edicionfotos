@@ -160,7 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_history_photo ON history_steps(photo_id, step_ind
 CREATE TRIGGER IF NOT EXISTS trg_history_cap
 AFTER INSERT ON history_steps
 BEGIN
-  -- Cap at 100 steps
+  -- 1. Cap at 100 steps: delete steps beyond the 100 most recent
   DELETE FROM history_steps
   WHERE photo_id = NEW.photo_id
     AND id NOT IN (
@@ -170,20 +170,23 @@ BEGIN
       LIMIT 100
     );
 
-  -- Cap at 50 MB total history JSON size per photo (52428800 bytes)
+  -- 2. Cap at 50 MB total history JSON size per photo (52428800 bytes)
+  -- Uses cumulative sum starting from most recent step DESC to delete only steps exceeding 50 MB
   DELETE FROM history_steps
   WHERE photo_id = NEW.photo_id
     AND id IN (
-      SELECT id FROM history_steps
-      WHERE photo_id = NEW.photo_id
-      ORDER BY step_index ASC
-    )
-    AND (
-      SELECT SUM(length(settings))
-      FROM history_steps
-      WHERE photo_id = NEW.photo_id
-    ) > 52428800
-    AND id != NEW.id;
+      SELECT id FROM (
+        SELECT id,
+               SUM(length(settings)) OVER (
+                 PARTITION BY photo_id
+                 ORDER BY step_index DESC
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+               ) AS cumulative_bytes
+        FROM history_steps
+        WHERE photo_id = NEW.photo_id
+      )
+      WHERE cumulative_bytes > 52428800
+    );
 END;
 
 ------------------------------------------------------------------------
