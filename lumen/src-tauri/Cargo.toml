@@ -1,0 +1,36 @@
+[package]
+name = "lumen"
+version = "0.1.0"
+description = "Lumen — Non-destructive photo editor and manager"
+authors = ["Lumen Contributors"]
+license = "MIT"
+repository = ""
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+name = "lumen_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-shell = "2"
+sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "tiff"] }
+kamadak-exif = "0.6"
+walkdir = "2"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }
+
