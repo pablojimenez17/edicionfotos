@@ -66,51 +66,55 @@
 - [x] Guardar presets de usuario
 
 ## Phase 4 — Export
-- [x] Tiled offscreen export: 1024–2048 px tiles with halo margins
-- [x] Binary pixel transfer to Rust (no JSON)
-- [x] Rust encoder: JPEG, PNG, TIFF, WebP
-- [x] ICC embed (sRGB, Display P3, AdobeRGB)
-- [x] Output sharpening (screen / print)
-- [x] EXIF/IPTC pass-through and strip
-- [x] Watermark (text + image)
-- [x] Filename templates ({date}, {name}, {seq}…)
-- [x] Background export queue with progress
+- [x] Tiled offscreen export: 1024–2048 px tiles with halo margins (REAL, verificado en tiledExportSeam.test.ts)
+- [x] Binary pixel transfer to Rust (no JSON) (REAL)
+- [x] Rust encoder: JPEG, PNG, TIFF, WebP (REAL, crate image)
+- [ ] ICC embed (sRGB, Display P3, AdobeRGB) — PARCIAL (falta incrustación física en cabeceras con img-parts)
+- [x] Output sharpening (screen / print) (REAL)
+- [ ] EXIF/IPTC pass-through and strip — PARCIAL (falta reinyección en cabeceras con img-parts)
+- [ ] Watermark (text + image) — PARCIAL (solo texto básico, falta gráfico PNG alfa y arrastre)
+- [x] Filename templates ({date}, {name}, {seq}…) (REAL)
+- [x] Background export queue with progress (REAL)
 
 ## Phase 5 — RAW
-- [x] Rust RAW decode (rawloader or LibRaw via FFI)
-- [x] Embedded JPEG preview extraction
-- [x] Demosaic (bilinear, AHD)
-- [x] Camera colour profiles (DNG-style)
-- [x] WB multipliers from RAW metadata
+- [ ] Rust RAW decode (rawloader / rawler) — PARCIAL (falta integración completa con decodificador rawler sin FFI)
+- [x] Embedded JPEG preview extraction (REAL)
+- [x] Demosaic (bilinear) (REAL)
+- [ ] Camera colour profiles (DNG-style) — STUB (falta parser de perfiles DCP y matrices de calibración de sensor)
+- [ ] WB multipliers from RAW metadata — PARCIAL (matemática en shader, falta lectura de AsShotNeutral de RAW)
 
 ## Phase 6 — Advanced Develop
-- [x] Spatial passes: clarity, texture, dehaze, luminance/color NR
-- [x] Whites / Blacks sliders (added to uber-shader)
-- [x] Parametric tone curve (shadow/dark/light/highlight regions)
-- [x] Per-channel curves (R, G, B)
-- [x] Colour grading: 3 wheels + blending + balance
-- [x] Detail panel: sharpen amount/radius/detail/masking, NR
-- [x] Lens corrections (lensfun)
-- [x] Chromatic aberration removal
-- [x] Upright / perspective transform
-- [x] Post-crop vignette (midpoint, roundness, feather)
-- [x] Grain with size + roughness
-- [x] Calibration tab, profile browser
-- [x] Crop guides: thirds, golden spiral, diagonal, triangle, grid
-- [x] Spot removal: clone + heal
-- [x] Red eye removal
-- [x] Brush mask: flow, density, auto-erase → R16F texture
-- [x] Luminance range mask (shader-driven)
-- [x] Colour range mask (shader-driven)
-- [x] Mask combine / subtract / intersect (CPU composition)
-- [x] Multiple masks per photo with independent adjustments
-- [x] Before/after 4 modes
-- [x] Soft proofing
+- [x] Spatial passes: clarity, texture, dehaze, luminance/color NR (REAL, FBOs ping-pong RGBA16F)
+- [x] Whites / Blacks sliders (added to uber-shader) (REAL)
+- [x] Parametric tone curve (shadow/dark/light/highlight regions) (REAL)
+- [x] Per-channel curves (R, G, B) (REAL)
+- [x] Colour grading: 3 wheels + blending + balance (REAL)
+- [x] Detail panel: sharpen amount/radius/detail/masking, NR (REAL)
+- [ ] Lens corrections (lensfun) — PARCIAL/STUB (distorsión radial analítica, falta base XML de lensfun)
+- [x] Chromatic aberration removal (REAL)
+- [x] Upright / perspective transform (REAL)
+- [x] Post-crop vignette (midpoint, roundness, feather) (REAL)
+- [x] Grain with size + roughness (REAL)
+- [x] Calibration tab, profile browser (REAL)
+- [x] Crop guides: thirds, golden spiral, diagonal, triangle, grid (REAL)
+- [ ] Spot removal: clone + heal — PARCIAL (UI y difuminado radial, falta Poisson blending)
+- [x] Red eye removal (REAL)
+- [x] Brush mask: flow, density, auto-erase → R16F texture (REAL)
+- [x] Luminance range mask (shader-driven) (REAL)
+- [x] Colour range mask (shader-driven) (REAL)
+- [x] Mask combine / subtract / intersect (CPU composition) (REAL)
+- [x] Multiple masks per photo with independent adjustments (REAL)
+- [x] Before/after 4 modes (REAL)
+- [ ] Soft proofing — PARCIAL (simulación en canvas, falta LittleCMS 2 y perfiles .icc reales)
 
 ## Phase 7 — Extra Modules
-- [x] Map (GPS), Book, Slideshow, Print, Web
-- [x] Tethered capture
-- [x] Publish services
+- [ ] Map (GPS) — PARCIAL (pines, zoom y proyección Mercator listos; falta proveedor de teselas en directo con API Key)
+- [ ] Book — PARCIAL (maquetación y pliegos interactivos listos; falta exportación PDF física con printpdf)
+- [x] Slideshow (REAL, reproductor con transiciones Ken Burns y pantalla completa funcionando)
+- [ ] Print — PARCIAL (maquetación a 300 ppp y window.print(); falta spooler nativo directo)
+- [ ] Web — PARCIAL (diseño de galerías con temas listo; falta volcado a disco físico con Tauri FS)
+- [ ] Tethered capture — STUB (UI lista, falta driver USB PTP/MTP físico)
+- [ ] Publish services — STUB (panel y colas listos, falta OAuth2 y endpoints REST reales)
 
 ## Deferred
 - [ ] AI masks (MobileSAM / SAM2 via ONNX) — architecture ready
