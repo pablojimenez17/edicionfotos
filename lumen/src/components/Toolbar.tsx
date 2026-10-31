@@ -60,10 +60,10 @@ export function Toolbar() {
         <button
           className="toolbar__btn"
           onClick={() => setTetherOpen(true)}
-          title="Captura conectada de cámara (Tethered)"
-          style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#a7f3d0' }}
+          title="Captura conectada de cámara (Tethered) — Próximamente"
+          style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa' }}
         >
-          📷 Conectar cámara…
+          📷 Conectar cámara <span style={{ fontSize: '9px', background: '#3f3f46', color: '#e4e4e7', padding: '1px 4px', borderRadius: '3px', marginLeft: '4px' }}>Próximamente</span>
         </button>
 
         <div className="toolbar__separator" />

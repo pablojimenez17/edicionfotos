@@ -1,68 +1,13 @@
 import { useState } from 'react';
-import { useCatalogStore } from '../../stores/catalog';
 
 export function TetherModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const addPhotos = useCatalogStore((s) => s.addPhotos);
-
-  const cameraConnected = true;
   const [shutterSpeed, setShutterSpeed] = useState('1/250');
   const [aperture, setAperture] = useState('f/2.8');
   const [iso, setIso] = useState('400');
   const [whiteBalance, setWhiteBalance] = useState('Luz de día (5500K)');
   const [sessionName, setSessionName] = useState('Sesión Estudio Nov 2026');
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [capturedCount, setCapturedCount] = useState(0);
 
   if (!isOpen) return null;
-
-  const handleTrigger = () => {
-    setIsCapturing(true);
-    // Simulate camera capture shutter and immediate import
-    setTimeout(() => {
-      setIsCapturing(false);
-      setCapturedCount((c) => c + 1);
-
-      // Add a newly captured photo to catalog
-      const newId = Date.now();
-      addPhotos([
-        {
-          id: newId,
-          filename: `TETHER_${newId.toString().slice(-4)}.ARW`,
-          folder_id: 1,
-          master_id: null,
-          root_path: '',
-          file_path: `tether/TETHER_${newId.toString().slice(-4)}.ARW`,
-          file_size: 24500000,
-          file_mtime: new Date().toISOString(),
-          file_hash: `hash_${newId}`,
-          width: 7008,
-          height: 4672,
-          orientation: 1,
-          format: 'RAW',
-          color_space: 'sRGB',
-          date_taken: new Date().toISOString(),
-          camera_make: 'Sony',
-          camera_model: 'ILCE-7M4',
-          lens: 'FE 24-70mm F2.8 GM II',
-          focal_length: 50,
-          aperture: 2.8,
-          shutter_speed: shutterSpeed,
-          iso: parseInt(iso),
-          gps_lat: null,
-          gps_lng: null,
-          rating: 0,
-          flag: 'none',
-          color_label: 'none',
-          stack_id: null,
-          stack_position: null,
-          is_missing: false,
-          imported_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          thumbnailUrl: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=800',
-        },
-      ]);
-    }, 450);
-  };
 
   return (
     <div
@@ -106,6 +51,9 @@ export function TetherModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             <span style={{ fontWeight: 600, color: '#fff', fontSize: '13px' }}>
               Captura conectada de cámara (Tethered)
             </span>
+            <span style={{ fontSize: '9px', background: '#eab308', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+              PRÓXIMAMENTE
+            </span>
           </div>
           <button
             onClick={onClose}
@@ -123,6 +71,26 @@ export function TetherModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
 
         {/* Content */}
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '11px' }}>
+          {/* Próximamente Notice Banner */}
+          <div
+            style={{
+              backgroundColor: '#1c1917',
+              border: '1px solid #78350f',
+              borderRadius: '6px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fef08a', fontWeight: 600 }}>
+              <span>⚠️ Función en hoja de ruta (Roadmap)</span>
+            </div>
+            <p style={{ color: '#d6d3d1', margin: 0, lineHeight: 1.5 }}>
+              La captura conectada por cable USB/Wi-Fi requiere controladores nativos PTP/MTP específicos para Sony Camera Remote SDK, Canon EDSDK y Nikon SDK en Rust/C++. La interfaz de control se encuentra preparada a continuación, pendiente del backend nativo de comunicación USB.
+            </p>
+          </div>
+
           {/* Status Bar */}
           <div
             style={{
@@ -132,6 +100,7 @@ export function TetherModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              opacity: 0.6,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -140,15 +109,14 @@ export function TetherModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  backgroundColor: cameraConnected ? '#22c55e' : '#ef4444',
-                  boxShadow: cameraConnected ? '0 0 8px #22c55e' : 'none',
+                  backgroundColor: '#71717a',
                 }}
               />
-              <span style={{ fontWeight: 600, color: '#fff' }}>
-                {cameraConnected ? 'Sony Alpha 7 IV (ILCE-7M4)' : 'Ninguna cámara detectada'}
+              <span style={{ fontWeight: 600, color: '#d4d4d8' }}>
+                Esperando driver nativo USB (Sony / Canon / Nikon)
               </span>
             </div>
-            <span style={{ color: '#a1a1aa' }}>Batería 88% • CFexpress 112 GB</span>
+            <span style={{ color: '#71717a' }}>No conectado</span>
           </div>
 
           {/* Shooting Settings Bar */}
@@ -237,28 +205,27 @@ export function TetherModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           {/* Trigger Capture Button */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '10px' }}>
             <button
-              onClick={handleTrigger}
-              disabled={isCapturing}
+              disabled={true}
               style={{
                 width: '80px',
                 height: '80px',
                 borderRadius: '50%',
-                backgroundColor: isCapturing ? '#ef4444' : '#ffffff',
-                border: '6px solid #3b82f6',
-                boxShadow: '0 8px 24px rgba(59, 130, 246, 0.4)',
-                cursor: 'pointer',
+                backgroundColor: '#27272a',
+                border: '6px solid #3f3f46',
+                boxShadow: 'none',
+                cursor: 'not-allowed',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '22px',
-                transition: 'transform 0.1s ease',
+                opacity: 0.5,
               }}
-              title="Disparar cámara (o barra espaciadora)"
+              title="Disparador deshabilitado (esperando driver nativo)"
             >
-              {isCapturing ? '⚡' : '🔴'}
+              🔒
             </button>
-            <span style={{ color: '#a1a1aa', marginTop: '8px', fontSize: '11px' }}>
-              {isCapturing ? 'Disparando y transfiriendo RAW…' : `${capturedCount} fotos capturadas en esta sesión`}
+            <span style={{ color: '#71717a', marginTop: '8px', fontSize: '11px', textAlign: 'center' }}>
+              Disparador deshabilitado. Se activará automáticamente al conectar una cámara compatible con driver USB.
             </span>
           </div>
         </div>

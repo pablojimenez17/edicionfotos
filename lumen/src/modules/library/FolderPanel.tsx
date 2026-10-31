@@ -74,8 +74,9 @@ export function FolderPanel() {
 
       {/* Publish Services section */}
       <div style={{ marginTop: '16px', borderTop: '1px solid #27272a', paddingTop: '10px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-lumen-muted)', padding: '4px 12px 6px' }}>
-          SERVICIOS DE PUBLICACIÓN
+        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-lumen-muted)', padding: '4px 12px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>SERVICIOS DE PUBLICACIÓN</span>
+          <span style={{ fontSize: '9px', background: '#3f3f46', color: '#e4e4e7', padding: '1px 5px', borderRadius: '3px' }}>Próximamente</span>
         </div>
         <div style={{ padding: '0 8px' }}>
           <PublishServicesPanel />

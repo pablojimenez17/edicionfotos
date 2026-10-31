@@ -13,7 +13,7 @@ interface PublishService {
 export function PublishServicesPanel() {
   const photos = useFilteredPhotos();
 
-  const [services, setServices] = useState<PublishService[]>([
+  const [services] = useState<PublishService[]>([
     { id: 'hdd', name: 'Disco duro (Copia JPG Web)', icon: '💾', publishedCount: Math.min(12, photos.length), pendingCount: Math.max(0, photos.length - 12), status: 'pending' },
     { id: 'flickr', name: 'Flickr Photostream', icon: '📸', publishedCount: 8, pendingCount: 3, status: 'pending' },
     { id: 'stock', name: 'Adobe Stock Contributor', icon: '💎', publishedCount: 15, pendingCount: 0, status: 'synced' },
@@ -21,21 +21,6 @@ export function PublishServicesPanel() {
   ]);
 
   const [activeServiceId, setActiveServiceId] = useState('hdd');
-  const [isPublishing, setIsPublishing] = useState(false);
-
-  const handlePublish = (serviceId: string) => {
-    setIsPublishing(true);
-    setTimeout(() => {
-      setIsPublishing(false);
-      setServices((prev) =>
-        prev.map((s) =>
-          s.id === serviceId
-            ? { ...s, publishedCount: s.publishedCount + s.pendingCount, pendingCount: 0, status: 'synced' }
-            : s,
-        ),
-      );
-    }, 1000);
-  };
 
   const activeService = services.find((s) => s.id === activeServiceId) || services[0];
 
@@ -64,23 +49,8 @@ export function PublishServicesPanel() {
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {srv.pendingCount > 0 && (
-                <span
-                  style={{
-                    backgroundColor: '#f59e0b',
-                    color: '#000',
-                    fontSize: '9px',
-                    fontWeight: 700,
-                    padding: '1px 5px',
-                    borderRadius: '10px',
-                  }}
-                  title="Fotos pendientes de publicación"
-                >
-                  +{srv.pendingCount}
-                </span>
-              )}
-              <span style={{ color: '#71717a', fontSize: '10px' }}>
-                {srv.publishedCount}
+              <span style={{ fontSize: '9px', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '1px 4px', borderRadius: '3px' }}>
+                Próximamente
               </span>
             </div>
           </div>
@@ -90,28 +60,27 @@ export function PublishServicesPanel() {
       {/* Active Service Actions */}
       {activeService && (
         <div style={{ backgroundColor: '#18181b', padding: '10px', borderRadius: '4px', border: '1px solid #27272a' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ color: '#a1a1aa' }}>Estado del servicio:</span>
-            <span style={{ color: activeService.pendingCount > 0 ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>
-              {activeService.pendingCount > 0 ? 'Cambios pendientes' : 'Sincronizado'}
-            </span>
+          <div style={{ fontSize: '10px', color: '#eab308', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>🔒 Próximamente (En desarrollo)</span>
           </div>
+          <p style={{ color: '#a1a1aa', fontSize: '10px', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+            La sincronización con {activeService.name} requiere configuración de tokens OAuth2 y endpoint de API externa en Ajustes.
+          </p>
 
           <button
-            onClick={() => handlePublish(activeService.id)}
-            disabled={isPublishing || activeService.pendingCount === 0}
+            disabled={true}
             style={{
               width: '100%',
-              backgroundColor: activeService.pendingCount > 0 ? '#3b82f6' : '#27272a',
-              color: activeService.pendingCount > 0 ? '#fff' : '#71717a',
-              border: 'none',
+              backgroundColor: '#27272a',
+              color: '#71717a',
+              border: '1px solid #3f3f46',
               borderRadius: '4px',
               padding: '6px',
               fontWeight: 600,
-              cursor: activeService.pendingCount > 0 ? 'pointer' : 'default',
+              cursor: 'not-allowed',
             }}
           >
-            {isPublishing ? 'Publicando fotos…' : `Publicar cambios (${activeService.pendingCount})`}
+            Publicar (Próximamente)
           </button>
         </div>
       )}
