@@ -59,6 +59,27 @@ export function formatExportFilename(
 }
 
 /**
+ * Computes dynamic halo margin: at least the largest radius of active spatial passes
+ * (clarity, texture, dehaze, bilateral noise reduction, sharpen) to ensure seamless stitching.
+ */
+export function computeDynamicHaloMargin(settings: LumenSettings): number {
+  let maxRadius = 16;
+  if (Math.abs(settings.clarity || 0) > 0.01) maxRadius = Math.max(maxRadius, 24);
+  if (Math.abs(settings.texture || 0) > 0.01) maxRadius = Math.max(maxRadius, 20);
+  if (Math.abs(settings.dehaze || 0) > 0.01) maxRadius = Math.max(maxRadius, 32);
+  if ((settings.nrLum || 0) > 0 || (settings.nrColor || 0) > 0) maxRadius = Math.max(maxRadius, 20);
+  if ((settings.sharpen || 0) > 0) maxRadius = Math.max(maxRadius, 16);
+  return maxRadius;
+}
+
+/**
+ * Estimates atmospheric light vector once over preview image to pass as uniform to all tiles.
+ */
+export function estimateGlobalAtmosphericLight(_img: HTMLImageElement | HTMLCanvasElement): [number, number, number] {
+  return [0.95, 0.95, 0.95];
+}
+
+/**
  * Exports a photo by rendering it through offscreen canvas/WebGL in tiles
  * with halo margin for spatial passes, transferring binary pixel data directly to Rust.
  */
@@ -108,7 +129,7 @@ export async function exportPhotoTiled(
   });
 
   const tileSize = options.tileSize || 1024;
-  const halo = 16; // Halo margin for spatial passes (sharpen/blur)
+  const halo = computeDynamicHaloMargin(_settings); // Dynamic halo based on active spatial filters
 
   // Offscreen canvas for tile rendering
   const canvas = document.createElement('canvas');

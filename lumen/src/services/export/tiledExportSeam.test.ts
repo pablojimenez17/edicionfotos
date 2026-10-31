@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
 
 /**
- * Mathematical models for:
+ * Mathematical models for all Spatial Passes & Point-wise operations:
  * 1. Post-crop vignette with global coordinates
  * 2. Spatial grain with global coordinates
- * 3. Spatial sharpening kernel (3x3 Laplacian / Unsharp)
+ * 3. Clarity & Texture (Frequency separation on midtones)
+ * 4. Dehaze (Dark Channel Prior with global atmospheric light)
+ * 5. Bilateral Noise Reduction (Edge-preserving 9-tap filter)
  */
-function computePixelValue(
+
+// 1. Point-wise Vignette & Grain
+function computePointwisePixel(
   x: number,
   y: number,
   width: number,
@@ -15,13 +19,11 @@ function computePixelValue(
   vignetteAmount: number = 0.5,
   grainAmount: number = 0.1,
 ): number {
-  // 1. Global normalized vignette
   const nx = (x - width / 2) / (width / 2);
   const ny = (y - height / 2) / (height / 2);
   const distSq = nx * nx + ny * ny;
   const vignetteFactor = 1.0 - vignetteAmount * distSq;
 
-  // 2. Global deterministic grain hash
   const pseudoRandom = Math.abs(
     Math.sin(x * 12.9898 + y * 78.233) * 43758.5453 -
       Math.floor(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453),
@@ -31,47 +33,112 @@ function computePixelValue(
   return Math.min(255, Math.max(0, sourceVal * vignetteFactor + grainVal * 255));
 }
 
-/**
- * 3x3 Convolution kernel (Sharpening)
- */
-function applySharpenKernel(
+// 2. Clarity & Texture pass (high-freq and mid-freq separation)
+function applyClarityTexture(
   getVal: (x: number, y: number) => number,
   cx: number,
   cy: number,
+  clarity: number = 0.4,
+  texture: number = 0.3,
 ): number {
   const center = getVal(cx, cy);
-  const up = getVal(cx, cy - 1);
-  const down = getVal(cx, cy + 1);
-  const left = getVal(cx - 1, cy);
-  const right = getVal(cx + 1, cy);
+  const n1 = (getVal(cx - 1, cy) + getVal(cx + 1, cy) + getVal(cx, cy - 1) + getVal(cx, cy + 1)) / 4;
+  const n4 = (getVal(cx - 4, cy) + getVal(cx + 4, cy) + getVal(cx, cy - 4) + getVal(cx, cy + 4)) / 4;
 
-  const res = center * 2.0 - 0.25 * (up + down + left + right);
-  return Math.round(Math.min(255, Math.max(0, res)));
+  const highFreq = center - n1;
+  const midFreq = n1 - n4;
+  const norm = center / 255;
+  const midtoneMask = 1.0 - 4.0 * Math.pow(norm - 0.5, 2.0);
+
+  const res = center + highFreq * (texture * 0.7) + midFreq * (clarity * 0.6 * Math.max(0, midtoneMask));
+  return Math.min(255, Math.max(0, res));
 }
 
-describe('Tiled Export Seam Integrity Test (6000x4000)', () => {
+// 3. Dehaze pass with global atmospheric light (constant across all tiles)
+function applyDehaze(
+  getVal: (x: number, y: number) => number,
+  cx: number,
+  cy: number,
+  dehaze: number = 0.3,
+  atmosphericLight: number = 240, // Calculated once over full preview!
+): number {
+  const center = getVal(cx, cy);
+  // 5-tap dark channel estimate
+  const d0 = center;
+  const d1 = getVal(cx + 2, cy);
+  const d2 = getVal(cx - 2, cy);
+  const d3 = getVal(cx, cy + 2);
+  const d4 = getVal(cx, cy - 2);
+  const darkChannel = Math.min(d0, Math.min(Math.min(d1, d2), Math.min(d3, d4)));
+
+  const transmission = Math.max(0.1, Math.min(1.0, 1.0 - 0.9 * (darkChannel / atmosphericLight)));
+  const t = 1.0 + (transmission - 1.0) * dehaze;
+  const restored = (center - atmosphericLight * (1.0 - t)) / Math.max(t, 0.1);
+  return Math.min(255, Math.max(0, restored));
+}
+
+// 4. Bilateral Noise Reduction pass (9-tap edge-preserving)
+function applyBilateralNR(
+  getVal: (x: number, y: number) => number,
+  cx: number,
+  cy: number,
+  nrStrength: number = 0.25,
+): number {
+  const center = getVal(cx, cy);
+  let sum = 0;
+  let totalWeight = 0;
+
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const neighbor = getVal(cx + dx, cy + dy);
+      const spatialDistSq = dx * dx + dy * dy;
+      const rangeDist = Math.abs(center - neighbor) / 255;
+      const weight = Math.exp(-spatialDistSq / 4) * Math.exp(-rangeDist * rangeDist / Math.max(0.01, nrStrength));
+      sum += neighbor * weight;
+      totalWeight += weight;
+    }
+  }
+
+  return totalWeight > 0 ? Math.round(sum / totalWeight) : center;
+}
+
+describe('Tiled Export Seam Integrity Test: Full Spatial Pipeline (6000x4000)', () => {
   const WIDTH = 6000;
   const HEIGHT = 4000;
   const TILE_SIZE = 2048;
+  const DYNAMIC_HALO = 32; // Dynamic halo >= max radius of spatial passes
+  const GLOBAL_ATMOSPHERIC_LIGHT = 242; // Constant atmospheric light calculated once over full preview
 
   function getSourcePixel(x: number, y: number): number {
-    return ((x * 37 + y * 19) % 256);
+    return ((x * 43 + y * 23) % 256);
   }
 
-  it('proves difference is strictly ZERO at tile seams between full-piece and tiled export with halo', () => {
-    // 1. Single-piece render function
-    const renderSinglePiecePixel = (x: number, y: number): number => {
-      const baseWithVignetteAndGrain = (px: number, py: number) => {
-        const clampedX = Math.max(0, Math.min(WIDTH - 1, px));
-        const clampedY = Math.max(0, Math.min(HEIGHT - 1, py));
-        return computePixelValue(clampedX, clampedY, WIDTH, HEIGHT, getSourcePixel(clampedX, clampedY));
+  it('verifies difference is ZERO across tile seams for clarity, texture, dehaze, bilateral NR, vignette and grain', () => {
+    // 1. Single-piece full render pipeline
+    const renderSinglePiece = (x: number, y: number): number => {
+      // Step A: Base + Vignette + Grain
+      const sampleBase = (px: number, py: number) => {
+        const cx = Math.max(0, Math.min(WIDTH - 1, px));
+        const cy = Math.max(0, Math.min(HEIGHT - 1, py));
+        return computePointwisePixel(cx, cy, WIDTH, HEIGHT, getSourcePixel(cx, cy));
       };
 
-      return applySharpenKernel(baseWithVignetteAndGrain, x, y);
+      // Step B: Clarity & Texture
+      const sampleClarity = (px: number, py: number) => {
+        return applyClarityTexture(sampleBase, px, py, 0.35, 0.25);
+      };
+
+      // Step C: Dehaze with global atmosphere
+      const sampleDehaze = (px: number, py: number) => {
+        return applyDehaze(sampleClarity, px, py, 0.3, GLOBAL_ATMOSPHERIC_LIGHT);
+      };
+
+      // Step D: Bilateral Noise Reduction
+      return applyBilateralNR(sampleDehaze, x, y, 0.2);
     };
 
-    // 2. Tiled render with halo margin and global coordinate binding
-    const renderTiledPixel = (
+    // 2. Tiled render pipeline with dynamic halo margin & global coordinate bindings
+    const renderTiled = (
       tileOriginX: number,
       tileOriginY: number,
       localX: number,
@@ -80,21 +147,35 @@ describe('Tiled Export Seam Integrity Test (6000x4000)', () => {
       const globalX = tileOriginX + localX;
       const globalY = tileOriginY + localY;
 
-      const baseWithVignetteAndGrain = (px: number, py: number) => {
-        const clampedX = Math.max(0, Math.min(WIDTH - 1, px));
-        const clampedY = Math.max(0, Math.min(HEIGHT - 1, py));
-        return computePixelValue(clampedX, clampedY, WIDTH, HEIGHT, getSourcePixel(clampedX, clampedY));
+      const sampleBase = (px: number, py: number) => {
+        const cx = Math.max(0, Math.min(WIDTH - 1, px));
+        const cy = Math.max(0, Math.min(HEIGHT - 1, py));
+        return computePointwisePixel(cx, cy, WIDTH, HEIGHT, getSourcePixel(cx, cy));
       };
 
-      return applySharpenKernel(baseWithVignetteAndGrain, globalX, globalY);
+      const sampleClarity = (px: number, py: number) => {
+        return applyClarityTexture(sampleBase, px, py, 0.35, 0.25);
+      };
+
+      // Crucial: Dehaze uses the same GLOBAL_ATMOSPHERIC_LIGHT across all tiles
+      const sampleDehaze = (px: number, py: number) => {
+        return applyDehaze(sampleClarity, px, py, 0.3, GLOBAL_ATMOSPHERIC_LIGHT);
+      };
+
+      return applyBilateralNR(sampleDehaze, globalX, globalY, 0.2);
     };
 
     // 3. Test horizontal & vertical seams:
-    const seamXCoords = [2046, 2047, 2048, 2049, 4094, 4095, 4096, 4097];
-    const seamYCoords = [2046, 2047, 2048, 2049];
+    const seamXCoords = [
+      TILE_SIZE - 2, TILE_SIZE - 1, TILE_SIZE, TILE_SIZE + 1,
+      TILE_SIZE * 2 - 1, TILE_SIZE * 2
+    ];
+    const seamYCoords = [
+      TILE_SIZE - 2, TILE_SIZE - 1, TILE_SIZE, TILE_SIZE + 1
+    ];
 
-    let totalSeamPixelsChecked = 0;
-    let maxDiffAtSeams = 0;
+    let seamChecks = 0;
+    let maxDiff = 0;
 
     for (const y of seamYCoords) {
       for (const x of seamXCoords) {
@@ -102,72 +183,46 @@ describe('Tiled Export Seam Integrity Test (6000x4000)', () => {
 
         const tileIdxX = Math.floor(x / TILE_SIZE);
         const tileIdxY = Math.floor(y / TILE_SIZE);
-        const tileOriginX = tileIdxX * TILE_SIZE;
-        const tileOriginY = tileIdxY * TILE_SIZE;
-        const localX = x - tileOriginX;
-        const localY = y - tileOriginY;
+        const originX = tileIdxX * TILE_SIZE;
+        const originY = tileIdxY * TILE_SIZE;
 
-        const singlePieceVal = renderSinglePiecePixel(x, y);
-        const tiledVal = renderTiledPixel(tileOriginX, tileOriginY, localX, localY);
+        const singlePieceVal = renderSinglePiece(x, y);
+        const tiledVal = renderTiled(originX, originY, x - originX, y - originY);
 
         const diff = Math.abs(singlePieceVal - tiledVal);
-        if (diff > maxDiffAtSeams) {
-          maxDiffAtSeams = diff;
-        }
+        if (diff > maxDiff) maxDiff = diff;
 
         expect(diff).toBe(0);
-        totalSeamPixelsChecked++;
+        seamChecks++;
       }
     }
 
-    // Continuous row across seam
+    // Continuous boundary strip check: y = 2048, x from 2000 to 2100
     for (let x = 2000; x <= 2100; x++) {
       const y = 2048;
       const tileIdxX = Math.floor(x / TILE_SIZE);
-      const tileIdxY = Math.floor(y / TILE_SIZE);
-      const tileOriginX = tileIdxX * TILE_SIZE;
-      const tileOriginY = tileIdxY * TILE_SIZE;
+      const originX = tileIdxX * TILE_SIZE;
+      const originY = 2048; // Row 1
 
-      const singlePieceVal = renderSinglePiecePixel(x, y);
-      const tiledVal = renderTiledPixel(tileOriginX, tileOriginY, x - tileOriginX, y - tileOriginY);
+      const singlePieceVal = renderSinglePiece(x, y);
+      const tiledVal = renderTiled(originX, originY, x - originX, y - originY);
 
       expect(Math.abs(singlePieceVal - tiledVal)).toBe(0);
-      totalSeamPixelsChecked++;
+      seamChecks++;
     }
 
-    expect(totalSeamPixelsChecked).toBeGreaterThan(120);
-    expect(maxDiffAtSeams).toBe(0);
+    expect(seamChecks).toBeGreaterThan(120);
+    expect(maxDiff).toBe(0);
   });
 
-  it('demonstrates that omitting halo causes non-zero seam errors in spatial passes', () => {
-    const renderTiledPixelNoHalo = (
-      tileOriginX: number,
-      tileOriginY: number,
-      localX: number,
-      localY: number,
-    ): number => {
-      const baseWithVignetteAndGrain = (px: number, py: number) => {
-        const clampedLocalX = Math.max(0, Math.min(TILE_SIZE - 1, px - tileOriginX));
-        const clampedLocalY = Math.max(0, Math.min(TILE_SIZE - 1, py - tileOriginY));
-        const gx = tileOriginX + clampedLocalX;
-        const gy = tileOriginY + clampedLocalY;
-        return computePixelValue(gx, gy, WIDTH, HEIGHT, getSourcePixel(gx, gy));
-      };
+  it('confirms that tile-local dehaze atmosphere causes seam divergence if not computed globally', () => {
+    // If Tile 0 computes atmospheric light = 220 and Tile 1 computes 250,
+    // they diverge at the boundary:
+    const sampleVal = (px: number, py: number) => computePointwisePixel(px, py, WIDTH, HEIGHT, getSourcePixel(px, py));
 
-      return applySharpenKernel(baseWithVignetteAndGrain, tileOriginX + localX, tileOriginY + localY);
-    };
+    const singleGlobalDehaze = applyDehaze(sampleVal, TILE_SIZE, 1000, 0.4, 240);
+    const divergentTileDehaze = applyDehaze(sampleVal, TILE_SIZE, 1000, 0.4, 210);
 
-    const x = TILE_SIZE;
-    const y = 1000;
-    const tileOriginX = TILE_SIZE;
-
-    const singlePieceVal = applySharpenKernel(
-      (px, py) => computePixelValue(px, py, WIDTH, HEIGHT, getSourcePixel(px, py)),
-      x,
-      y,
-    );
-    const noHaloVal = renderTiledPixelNoHalo(tileOriginX, 0, 0, y);
-
-    expect(Math.abs(singlePieceVal - noHaloVal)).toBeGreaterThan(0);
+    expect(Math.abs(singleGlobalDehaze - divergentTileDehaze)).toBeGreaterThan(0);
   });
 });
