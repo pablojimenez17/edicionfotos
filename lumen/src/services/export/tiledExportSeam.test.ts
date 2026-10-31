@@ -114,6 +114,7 @@ describe('Tiled Export Seam Integrity Test: Full Spatial Pipeline (6000x4000)', 
   }
 
   it('verifies difference is ZERO across tile seams for clarity, texture, dehaze, bilateral NR, vignette and grain', () => {
+    expect(DYNAMIC_HALO).toBeGreaterThanOrEqual(32);
     // 1. Single-piece full render pipeline
     const renderSinglePiece = (x: number, y: number): number => {
       // Step A: Base + Vignette + Grain

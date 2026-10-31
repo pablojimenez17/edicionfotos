@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauri, convertFileSrc } from '../../services/catalog';
 import { useFilteredPhotos } from '../../stores/catalog';
 import { Filmstrip } from '../../components/Filmstrip';
 
@@ -18,14 +20,29 @@ export function WebModule() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportComplete, setExportComplete] = useState(false);
 
-  const handleExportWebGallery = () => {
+  const handleExportWebGallery = async () => {
     setIsExporting(true);
-    // Simulate generation of HTML/CSS package
-    setTimeout(() => {
-      setIsExporting(false);
+    try {
+      if (isTauri()) {
+        const photoUrls = photos.map((p) => {
+          const fullPath = p.root_path ? `${p.root_path}/${p.file_path}` : p.file_path;
+          return p.thumbnailUrl || convertFileSrc(fullPath);
+        });
+        await invoke('export_web_gallery_to_disk', {
+          destinationFolder: 'C:/Photos/web_gallery',
+          galleryTitle,
+          theme,
+          layoutStyle: galleryStyle,
+          photoUrls,
+        });
+      }
       setExportComplete(true);
       setTimeout(() => setExportComplete(false), 3500);
-    }, 1000);
+    } catch (err) {
+      console.error('Web export failed:', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const isDark = theme === 'dark';

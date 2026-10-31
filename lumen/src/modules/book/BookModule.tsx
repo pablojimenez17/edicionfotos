@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '../../services/catalog';
 import { useFilteredPhotos } from '../../stores/catalog';
 import { Filmstrip } from '../../components/Filmstrip';
 
@@ -64,13 +66,29 @@ export function BookModule() {
     );
   };
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
+    try {
+      if (isTauri()) {
+        const pagesPayload = pages.map((p) => ({
+          page_number: p.pageNumber,
+          title: `Página ${p.pageNumber}`,
+          subtitle: p.layout,
+        }));
+        await invoke('generate_photobook_pdf', {
+          outputPath: 'C:/Photos/photobook_lumen.pdf',
+          title: bookTitle,
+          formatType: bookSize,
+          pages: pagesPayload,
+        });
+      }
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 3000);
-    }, 1200);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (

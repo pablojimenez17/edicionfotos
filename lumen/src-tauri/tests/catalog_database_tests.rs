@@ -525,6 +525,66 @@ fn test_export_jpeg_with_icc_profile_and_exif_reread() {
     fs::remove_file(&out_file).ok();
 }
 
+#[test]
+fn test_pdf_photobook_and_web_gallery_export() {
+    use lumen_lib::commands::book::{generate_photobook_pdf, BookPageExport};
+    use lumen_lib::commands::web::export_web_gallery_to_disk;
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir().join("lumen_test_book_web");
+    fs::create_dir_all(&temp_dir).ok();
+
+    // 1. Test PDF generation with printpdf
+    let pdf_path = temp_dir.join("test_book.pdf").to_string_lossy().to_string();
+    let pages = vec![
+        BookPageExport {
+            page_number: 1,
+            title: "Introducción a los Alpes".to_string(),
+            subtitle: Some("Fotografía de paisajes 2024".to_string()),
+        },
+        BookPageExport {
+            page_number: 2,
+            title: "Atardecer en Dolomitas".to_string(),
+            subtitle: Some("Luz dorada sobre roca caliza".to_string()),
+        },
+    ];
+
+    let generated_pdf = generate_photobook_pdf(
+        pdf_path.clone(),
+        "Mi Fotolibro 2024".to_string(),
+        "a4".to_string(),
+        pages,
+    ).expect("Generate PDF with printpdf");
+
+    assert!(fs::metadata(&generated_pdf).is_ok());
+    let pdf_bytes = fs::read(&generated_pdf).expect("Read generated PDF");
+    assert!(pdf_bytes.starts_with(b"%PDF-"), "Generated file must have valid PDF header");
+
+    // 2. Test Web gallery generation on disk
+    let web_dir = temp_dir.join("test_web_gallery").to_string_lossy().to_string();
+    let exported_web = export_web_gallery_to_disk(
+        web_dir.clone(),
+        "Galería de Viajes".to_string(),
+        "dark".to_string(),
+        "grid".to_string(),
+        vec!["thumb1.jpg".to_string(), "thumb2.jpg".to_string()],
+    ).expect("Export web gallery to disk");
+
+    let index_file = temp_dir.join("test_web_gallery").join("index.html");
+    let style_file = temp_dir.join("test_web_gallery").join("style.css");
+    assert!(index_file.exists(), "index.html must exist on disk");
+    assert!(style_file.exists(), "style.css must exist on disk");
+
+    let index_content = fs::read_to_string(&index_file).unwrap();
+    assert!(index_content.contains("Galería de Viajes"));
+    assert!(index_content.contains("gallery-container"));
+
+    // Cleanup
+    fs::remove_file(&pdf_path).ok();
+    fs::remove_dir_all(&exported_web).ok();
+}
+
+
 
 
 

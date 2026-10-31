@@ -21,6 +21,9 @@ export function MapModule() {
   const [zoomLevel, setZoomLevel] = useState<number>(5);
   const [searchLocation, setSearchLocation] = useState('');
   const [filterByMapArea, setFilterByMapArea] = useState(false);
+  const [tileProvider, setTileProvider] = useState<'osm' | 'mapbox' | 'carto'>('osm');
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('lumen_map_api_key') || '');
+  const [showTileSettings, setShowTileSettings] = useState(false);
 
   // Extract photos with GPS coordinates (or generate fallback pins for preview)
   const gpsPins: GpsPin[] = useMemo(() => {
@@ -180,8 +183,109 @@ export function MapModule() {
           >
             Centrar
           </button>
+          <button
+            onClick={() => setShowTileSettings((s) => !s)}
+            style={{
+              backgroundColor: apiKey ? '#1e3a5f' : '#27272a',
+              border: `1px solid ${apiKey ? '#3b82f6' : '#3f3f46'}`,
+              borderRadius: '3px',
+              color: apiKey ? '#60a5fa' : '#a1a1aa',
+              padding: '2px 8px',
+              fontSize: '10px',
+              marginLeft: '8px',
+              cursor: 'pointer',
+            }}
+            title="Configurar proveedor de teselas de mapa y clave API"
+          >
+            ⚙ Clave API Teselas
+          </button>
         </div>
       </div>
+
+      {/* Modal / Popover: Clave API del Proveedor de Teselas */}
+      {showTileSettings && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '40px',
+            right: '20px',
+            backgroundColor: '#18181b',
+            border: '1px solid #3f3f46',
+            borderRadius: '6px',
+            padding: '16px',
+            width: '320px',
+            zIndex: 100,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+            fontSize: '11px',
+          }}
+        >
+          <div style={{ fontWeight: 600, color: '#e4e4e7', marginBottom: '8px' }}>
+            ⚙ PROVEEDOR DE TESELAS Y CLAVE API
+          </div>
+          <div style={{ color: '#a1a1aa', marginBottom: '12px', lineHeight: 1.4 }}>
+            Configura el proveedor de mapas satelitales o vectoriales para descargar teselas en tiempo real:
+          </div>
+
+          <label style={{ display: 'block', color: '#71717a', marginBottom: '4px' }}>Proveedor:</label>
+          <select
+            value={tileProvider}
+            onChange={(e) => setTileProvider(e.target.value as any)}
+            style={{
+              width: '100%',
+              backgroundColor: '#27272a',
+              border: '1px solid #3f3f46',
+              borderRadius: '4px',
+              color: '#fff',
+              padding: '5px 8px',
+              marginBottom: '12px',
+              fontSize: '11px',
+            }}
+          >
+            <option value="osm">OpenStreetMap (Público / Libre)</option>
+            <option value="mapbox">Mapbox (Requiere Clave API pk.*)</option>
+            <option value="carto">CartoDB Positron / Dark Matter</option>
+          </select>
+
+          <label style={{ display: 'block', color: '#71717a', marginBottom: '4px' }}>Clave API / Token de Acceso:</label>
+          <input
+            type="password"
+            placeholder="pk.eyJ1IjoibHVtZW4i..."
+            value={apiKey}
+            onChange={(e) => {
+              setApiKey(e.target.value);
+              localStorage.setItem('lumen_map_api_key', e.target.value);
+            }}
+            style={{
+              width: '100%',
+              backgroundColor: '#27272a',
+              border: '1px solid #3f3f46',
+              borderRadius: '4px',
+              color: '#fff',
+              padding: '6px 8px',
+              marginBottom: '12px',
+              fontSize: '11px',
+              boxSizing: 'border-box',
+            }}
+          />
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button
+              onClick={() => setShowTileSettings(false)}
+              style={{
+                backgroundColor: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '4px 12px',
+                fontSize: '11px',
+                cursor: 'pointer',
+              }}
+            >
+              Guardar y Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Map Viewport */}
       <div
