@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCatalogStore, useFilteredPhotos } from '../../stores/catalog';
 import { useUiStore } from '../../stores/ui';
 import {
-  importFolder,
   loadThumbnails,
   createVirtualCopy,
   groupPhotosIntoStack,
   ungroupStack,
   setStackTop,
 } from '../../services/catalog';
+import { ImportModal } from './ImportModal';
 import type { Photo } from '../../types';
 
 const COLOR_MAP: Record<string, string> = {
@@ -129,19 +129,88 @@ export function GridView() {
     });
   };
 
+  const [emptyImportOpen, setEmptyImportOpen] = useState(false);
+  const [emptyImportPaths, setEmptyImportPaths] = useState<string[]>([]);
+
+  const handleEmptyImportFolder = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({ directory: true, multiple: false, title: 'Importar carpeta...' });
+      if (selected && typeof selected === 'string') {
+        setEmptyImportPaths([selected]);
+        setEmptyImportOpen(true);
+      }
+    } catch (err) {
+      console.error('Empty import folder error:', err);
+    }
+  };
+
+  const handleEmptyImportFiles = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: false,
+        multiple: true,
+        title: 'Importar archivos...',
+        filters: [
+          {
+            name: 'Imágenes y RAW',
+            extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp', 'cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'],
+          },
+          { name: 'Todos los archivos', extensions: ['*'] },
+        ],
+      });
+      if (selected) {
+        const paths = Array.isArray(selected) ? selected : [selected];
+        if (paths.length > 0) {
+          setEmptyImportPaths(paths);
+          setEmptyImportOpen(true);
+        }
+      }
+    } catch (err) {
+      console.error('Empty import files error:', err);
+    }
+  };
+
   if (filteredPhotos.length === 0 && !isImporting) {
     return (
-      <div className="empty-state">
-        <div className="empty-state__icon">📷</div>
-        <div className="empty-state__text">
-          No hay fotos en la biblioteca.
-          <br />
-          Importa una carpeta para empezar a trabajar.
+      <>
+        <div className="empty-state">
+          <div className="empty-state__icon">📷</div>
+          <div className="empty-state__text" style={{ marginBottom: '16px' }}>
+            No hay fotos en la biblioteca.
+          </div>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'center' }}>
+            <button
+              id="empty-btn-import-folder"
+              className="empty-state__btn"
+              onClick={handleEmptyImportFolder}
+            >
+              📁 Importar carpeta
+            </button>
+            <button
+              id="empty-btn-import-files"
+              className="empty-state__btn"
+              style={{
+                backgroundColor: 'var(--color-lumen-surface, #27272a)',
+                border: '1px solid var(--color-lumen-border, #3f3f46)',
+                color: 'var(--color-lumen-text, #f4f4f5)',
+              }}
+              onClick={handleEmptyImportFiles}
+            >
+              🖼️ Importar archivos
+            </button>
+          </div>
+          <div style={{ marginTop: '14px', fontSize: '13px', color: 'var(--color-lumen-muted, #a1a1aa)' }}>
+            o arrastra aquí tus fotos
+          </div>
         </div>
-        <button className="empty-state__btn" onClick={() => importFolder()}>
-          Importar carpeta
-        </button>
-      </div>
+        <ImportModal
+          isOpen={emptyImportOpen}
+          onClose={() => setEmptyImportOpen(false)}
+          initialPaths={emptyImportPaths}
+        />
+      </>
     );
   }
 

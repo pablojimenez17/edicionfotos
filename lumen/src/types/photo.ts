@@ -112,6 +112,7 @@ export interface Snapshot {
 export interface ScannedPhoto {
   filename: string;
   rel_path: string;
+  file_path?: string;
   file_size: number;
   file_hash: string;
   file_mtime: string;
@@ -120,6 +121,8 @@ export interface ScannedPhoto {
   orientation: number;
   format: string;
   color_space: string;
+  has_embedded_preview?: boolean;
+  warning?: string | null;
   date_taken: string | null;
   camera_make: string | null;
   camera_model: string | null;
@@ -131,3 +134,18 @@ export interface ScannedPhoto {
   gps_lat: number | null;
   gps_lng: number | null;
 }
+
+export interface ScanResult {
+  photos: ScannedPhoto[];
+  total_found: number;
+  unsupported_count: number;
+  corrupted_count: number;
+  warnings: string[];
+}
+
+export interface RemovableDrive {
+  path: string;
+  label: string;
+  drive_type: string;
+}
+

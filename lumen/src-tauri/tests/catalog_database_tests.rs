@@ -863,6 +863,86 @@ async fn test_benchmark_200_jpegs_and_24mp_export() {
     fs::remove_dir_all(&temp_root).ok();
 }
 
+#[tokio::test]
+async fn test_import_folder_with_spaces_accents_subfolders_duplicates_and_corrupt() {
+    use lumen_lib::commands::import::scan_paths;
+    use std::fs;
+    use std::time::SystemTime;
+
+    let nonce = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    // Directory name with spaces, accents and special characters
+    let base_temp = std::env::temp_dir().join(format!("lumen_test_pablo_jimenez_{}", nonce));
+    let root_dir = base_temp.join("Pablo Jiménez Fotos 2026 (Excursión a la Montaña)");
+    let sub_dir = root_dir.join("Sesión Día 1 - Amanecer");
+    fs::create_dir_all(&sub_dir).expect("Create dirs with spaces and accents");
+
+    // 1. Create valid JPEG in root
+    let img_root = image::RgbImage::from_fn(120, 80, |x, y| {
+        image::Rgb([(x % 255) as u8, (y % 255) as u8, 128])
+    });
+    let root_photo_path = root_dir.join("Foto Raíz Árbol.jpg");
+    img_root.save(&root_photo_path).expect("Save root photo");
+
+    // 2. Create valid JPEG in subfolder
+    let img_sub = image::RgbImage::from_fn(160, 90, |x, y| {
+        image::Rgb([200, (x % 255) as u8, (y % 255) as u8])
+    });
+    let sub_photo_path = sub_dir.join("Foto Subcarpeta Río.png");
+    img_sub.save(&sub_photo_path).expect("Save subfolder photo");
+
+    // 3. Create exact DUPLICATE in subfolder (same bytes as root photo -> same hash)
+    let dup_photo_path = sub_dir.join("Copia Duplicada Raíz.jpg");
+    fs::copy(&root_photo_path, &dup_photo_path).expect("Copy duplicate");
+
+    // 4. Create CORRUPT file (0 bytes or damaged header with image extension)
+    let corrupt_path = sub_dir.join("Foto Dañada Ilegible.jpg");
+    fs::write(&corrupt_path, b"").expect("Write corrupt empty file");
+
+    // 5. Create UNSUPPORTED format file (.txt, .pdf, etc.)
+    let unsupported_path = root_dir.join("Notas de Viaje.txt");
+    fs::write(&unsupported_path, b"Itinerario de viaje con fotos").expect("Write unsupported file");
+
+    // Execute scan_paths with recursive = true
+    let scan_res = scan_paths(vec![root_dir.to_string_lossy().to_string()], true)
+        .await
+        .expect("scan_paths should succeed with spaces and accents");
+
+    println!("Scan Result: total_found={}, unsupported={}, corrupted={}, photos={}",
+        scan_res.total_found, scan_res.unsupported_count, scan_res.corrupted_count, scan_res.photos.len());
+
+    // Verifications
+    assert_eq!(scan_res.photos.len(), 3, "Should find 3 valid image photos (2 unique + 1 duplicate)");
+    assert_eq!(scan_res.corrupted_count, 1, "Should identify 1 corrupted file");
+    assert_eq!(scan_res.unsupported_count, 1, "Should identify 1 unsupported file (.txt)");
+
+    // Verify duplicate hashes match
+    let root_photo = scan_res.photos.iter().find(|p| p.filename == "Foto Raíz Árbol.jpg").expect("Found root photo");
+    let dup_photo = scan_res.photos.iter().find(|p| p.filename == "Copia Duplicada Raíz.jpg").expect("Found duplicate photo");
+    let sub_photo = scan_res.photos.iter().find(|p| p.filename == "Foto Subcarpeta Río.png").expect("Found sub photo");
+
+    assert_eq!(root_photo.file_hash, dup_photo.file_hash, "Duplicate must share identical partial hash");
+    assert_ne!(root_photo.file_hash, sub_photo.file_hash, "Unique photos must have distinct hashes");
+
+    // Verify paths with spaces and accents were properly handled and normalized
+    assert!(root_photo.file_path.contains("Pablo Jiménez"));
+    assert!(root_photo.file_path.contains("Excursión a la Montaña"));
+    assert!(sub_photo.file_path.contains("Sesión Día 1 - Amanecer"));
+
+    // Verify scan summary with recursive = false
+    let non_recursive_res = scan_paths(vec![root_dir.to_string_lossy().to_string()], false)
+        .await
+        .expect("Non-recursive scan");
+    assert_eq!(non_recursive_res.photos.len(), 1, "Non-recursive scan should only find 1 root photo");
+
+    // Clean up
+    fs::remove_dir_all(&base_temp).ok();
+}
+
+
 
 
 

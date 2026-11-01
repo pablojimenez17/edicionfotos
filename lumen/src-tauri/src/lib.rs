@@ -16,6 +16,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::import::import_folder,
             commands::import::scan_folder,
+            commands::import::scan_paths,
+            commands::import::list_removable_drives,
             commands::thumbnail::generate_thumbnail,
             commands::thumbnail::get_thumbnail_path,
             commands::catalog::run_migration,

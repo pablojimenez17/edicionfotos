@@ -11,6 +11,15 @@ Este documento clasifica con rigor técnico el estado funcional de cada módulo 
 
 | Módulo / Función | Estado | Detalle y Limitaciones / Dependencias Faltantes |
 |---|:---:|---|
+| **IMPORTACIÓN DESDE EL ORDENADOR** | | |
+| Selector nativo de carpetas y archivos con filtros | **REAL** | `tauri-plugin-dialog` con permisos en capabilities y filtros por Imágenes, RAW y Todos. |
+| Detección de unidades extraíbles / Tarjetas SD | **REAL** | Detección Win32 nativa en Rust con `GetLogicalDrives` y `GetDriveTypeW`. |
+| Historial de carpetas recientes | **REAL** | Últimas 10 carpetas almacenadas y accesibles desde el menú. |
+| Arrastrar y soltar (Drag and Drop) | **REAL** | `dragDropEnabled: true` y evento nativo `onDragDropEvent` con rutas reales y overlay visual "Suelta para importar". |
+| Pegar rutas (Ctrl+V) y atajo Ctrl+Shift+I | **REAL** | Lectura y saneamiento de rutas desde el portapapeles y atajo global. |
+| Diálogo de importación con escaneo previo y rejilla | **REAL** | Escaneo previo con contador ("248 fotos encontradas, 12 ya están en el catálogo, 3 formatos no compatibles"), detección y omisión automática de duplicados por hash parcial, soporte de RAWs con preview embebida, rejilla de miniaturas interactiva con checkboxes. |
+| Opciones de importación y barra de progreso | **REAL** | Aplicación de presets, etiquetado con keywords, renombrado con plantilla (`{filename}`, `{date}`, `{seq}`, `{camera}`), barra de progreso con botón cancelar y resumen final ("Importadas X, omitidas Y, con error Z") con botón "Ver en la biblioteca". |
+| Rutas con espacios, acentos y subcarpetas | **REAL** | Verificado en test de Rust `test_import_folder_with_spaces_accents_subfolders_duplicates_and_corrupt`. |
 | **FASE 4: EXPORTACIÓN** | | |
 | Exportación por teselas con Halo Dinámico | **REAL** | Margen dinámico calculado a partir del radio máximo de los filtros espaciales activos. Verificado con `tiledExportSeam.test.ts` (diferencia = 0 en costuras). |
 | Formatos de salida (JPEG, PNG, TIFF, WebP) | **REAL** | Implementado en Rust con el crate `image`. |

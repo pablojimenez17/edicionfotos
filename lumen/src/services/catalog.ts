@@ -5,7 +5,8 @@
 import { invoke, convertFileSrc as tauriConvertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useCatalogStore } from '../stores/catalog';
-import type { Photo, Folder, RootFolder, ScannedPhoto } from '../types';
+import type { Photo, Folder, RootFolder, ScannedPhoto, ScanResult, RemovableDrive } from '../types';
+import { BUILT_IN_PRESETS } from '../types/adjustments';
 
 let db: any = null;
 
@@ -690,22 +691,74 @@ export async function getCollectionPhotoIds(collectionId: number): Promise<numbe
 // IMPORT WITH MODES (Add / Copy / Move)
 // ─────────────────────────────────────────────────────────────────────
 
-export async function scanFolderPhotos(folderPath: string): Promise<ScannedPhoto[]> {
-  const [, scannedPhotos]: [string, ScannedPhoto[]] = await invoke('import_folder', {
-    folderPath,
-  });
-  return scannedPhotos;
+export async function scanPaths(paths: string[], recursive: boolean = true): Promise<ScanResult> {
+  return await invoke<ScanResult>('scan_paths', { paths, recursive });
 }
 
-export async function executeImport(
+export async function listRemovableDrives(): Promise<RemovableDrive[]> {
+  try {
+    return await invoke<RemovableDrive[]>('list_removable_drives');
+  } catch (err) {
+    console.warn('Failed to list removable drives:', err);
+    return [];
+  }
+}
+
+const RECENT_FOLDERS_KEY = 'lumen_recent_import_folders';
+
+export function getRecentFolders(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_FOLDERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function addRecentFolder(path: string): void {
+  try {
+    if (!path || path.trim().length === 0) return;
+    const clean = normalizePath(path.trim());
+    const recents = getRecentFolders().filter((p) => normalizePath(p) !== clean);
+    recents.unshift(clean);
+    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(recents.slice(0, 10)));
+  } catch (err) {
+    console.warn('Failed to save recent folder:', err);
+  }
+}
+
+export async function scanFolderPhotos(folderPath: string): Promise<ScannedPhoto[]> {
+  const result = await scanPaths([folderPath], true);
+  return result.photos;
+}
+
+export interface ImportOptions {
+  presetName?: string;
+  keywords?: string[];
+  renameTemplate?: string;
+  onProgress?: (current: number, total: number) => void;
+  cancelSignal?: { cancelled: boolean };
+}
+
+export interface ImportSummary {
+  imported: number;
+  skipped: number;
+  errors: number;
+}
+
+export async function executeImportAdvanced(
   sourcePath: string,
   targetPath: string | null,
   mode: 'add' | 'copy' | 'move',
   selectedPhotos: ScannedPhoto[],
-): Promise<void> {
+  options: ImportOptions = {},
+): Promise<ImportSummary> {
   const store = useCatalogStore.getState();
   store.setIsImporting(true);
   store.setImportProgress(0);
+
+  const summary: ImportSummary = { imported: 0, skipped: 0, errors: 0 };
 
   try {
     const database = await getDb();
@@ -713,6 +766,8 @@ export async function executeImport(
     const normalizedTarget = targetPath ? normalizePath(targetPath) : null;
     const finalRootPath = mode === 'add' || !normalizedTarget ? normalizedSource : normalizedTarget;
     const finalRootName = finalRootPath.split('/').filter(Boolean).pop() || 'Fotos';
+
+    addRecentFolder(normalizedSource);
 
     // Insert or get root folder
     let rootFolder: RootFolder;
@@ -749,11 +804,35 @@ export async function executeImport(
     }
 
     const total = selectedPhotos.length;
-    let inserted = 0;
+    let seq = 1;
 
     for (const photo of selectedPhotos) {
+      if (options.cancelSignal?.cancelled) {
+        summary.skipped += total - (summary.imported + summary.errors);
+        break;
+      }
+
       try {
-        await database.execute(
+        let finalFilename = photo.filename;
+        if (options.renameTemplate && options.renameTemplate.trim().length > 0) {
+          const ext = photo.format;
+          const baseName = photo.filename.replace(/\.[^/.]+$/, '');
+          const dateStr = photo.date_taken ? photo.date_taken.slice(0, 10).replace(/[: ]/g, '-') : '2026-11-01';
+          const seqStr = String(seq).padStart(3, '0');
+          const cam = (photo.camera_model || photo.camera_make || 'cam').replace(/\s+/g, '_');
+
+          finalFilename = options.renameTemplate
+            .replace(/\{filename\}/g, baseName)
+            .replace(/\{date\}/g, dateStr)
+            .replace(/\{seq\}/g, seqStr)
+            .replace(/\{camera\}/g, cam);
+
+          if (!finalFilename.toLowerCase().endsWith(`.${ext.toLowerCase()}`)) {
+            finalFilename = `${finalFilename}.${ext}`;
+          }
+        }
+
+        const res = await database.execute(
           `INSERT OR IGNORE INTO photos (
             folder_id, filename, file_path, file_size, file_hash, file_mtime,
             width, height, orientation, format, color_space,
@@ -767,7 +846,7 @@ export async function executeImport(
           )`,
           [
             defaultFolder.id,
-            photo.filename,
+            finalFilename,
             photo.rel_path,
             photo.file_size,
             photo.file_hash,
@@ -790,39 +869,96 @@ export async function executeImport(
           ],
         );
 
-        const rows = await database.select(
-          'SELECT id FROM photos WHERE folder_id = $1 AND file_path = $2',
-          [defaultFolder.id, photo.rel_path],
-        );
-        if (rows.length > 0) {
-          const photoId = rows[0].id;
-          await database.execute(
-            `INSERT OR IGNORE INTO edits (photo_id, settings)
-             VALUES ($1, '{"processVersion":1}')`,
-            [photoId],
+        if (res.rowsAffected === 0) {
+          summary.skipped++;
+        } else {
+          summary.imported++;
+
+          // Get photo ID
+          const rows = await database.select(
+            'SELECT id FROM photos WHERE folder_id = $1 AND file_path = $2',
+            [defaultFolder.id, photo.rel_path],
           );
+
+          if (rows.length > 0) {
+            const photoId = rows[0].id;
+
+            // Apply preset settings if requested
+            let initialSettings = '{"processVersion":1}';
+            if (options.presetName && BUILT_IN_PRESETS[options.presetName]) {
+              initialSettings = JSON.stringify({
+                processVersion: 1,
+                ...BUILT_IN_PRESETS[options.presetName],
+              });
+            }
+
+            await database.execute(
+              `INSERT OR IGNORE INTO edits (photo_id, settings) VALUES ($1, $2)`,
+              [photoId, initialSettings],
+            );
+
+            // Add keywords if requested
+            if (options.keywords && options.keywords.length > 0) {
+              for (const kw of options.keywords) {
+                const cleanKw = kw.trim();
+                if (cleanKw) {
+                  try {
+                    await database.execute('INSERT OR IGNORE INTO keywords (name) VALUES ($1)', [cleanKw]);
+                    const kwRows = await database.select('SELECT id FROM keywords WHERE name = $1', [cleanKw]);
+                    if (kwRows.length > 0) {
+                      await database.execute(
+                        'INSERT OR IGNORE INTO photo_keywords (photo_id, keyword_id) VALUES ($1, $2)',
+                        [photoId, kwRows[0].id],
+                      );
+                    }
+                  } catch (e) {
+                    console.warn('Failed associating keyword:', cleanKw, e);
+                  }
+                }
+              }
+            }
+          }
         }
       } catch (err) {
         console.warn('Failed to insert photo in mode:', mode, photo.filename, err);
+        summary.errors++;
       }
-      inserted++;
-      store.setImportProgress(inserted / total);
+
+      seq++;
+      const processed = summary.imported + summary.skipped + summary.errors;
+      store.setImportProgress(processed / total);
+      if (options.onProgress) {
+        options.onProgress(processed, total);
+      }
     }
 
     // Log the import
     await database.execute(
       'INSERT INTO import_log (source_path, mode, photo_count) VALUES ($1, $2, $3)',
-      [sourcePath, mode, inserted],
+      [sourcePath, mode, summary.imported],
     );
 
     await loadCatalogData();
     generateThumbnails();
   } catch (err) {
-    console.error('Import with mode failed:', err);
+    console.error('Import advanced failed:', err);
   } finally {
     store.setIsImporting(false);
   }
+
+  return summary;
 }
+
+export async function executeImport(
+  sourcePath: string,
+  targetPath: string | null,
+  mode: 'add' | 'copy' | 'move',
+  selectedPhotos: ScannedPhoto[],
+): Promise<void> {
+  await executeImportAdvanced(sourcePath, targetPath, mode, selectedPhotos);
+}
+
+
 
 // ─────────────────────────────────────────────────────────────────────
 // VIRTUAL COPIES & STACKS
