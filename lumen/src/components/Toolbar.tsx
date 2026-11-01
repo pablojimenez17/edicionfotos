@@ -4,7 +4,7 @@ import { useCatalogStore } from '../stores/catalog';
 import { ImportModal } from '../modules/library/ImportModal';
 import { ExportModal } from '../modules/export/ExportModal';
 import { TetherModal } from '../modules/tether/TetherModal';
-import { open } from '@tauri-apps/plugin-dialog';
+import { getPlatform } from '../platform';
 import {
   listRemovableDrives,
   getRecentFolders,
@@ -68,56 +68,33 @@ export function Toolbar() {
     }
   };
 
-  // 1. Native folder picker
+  // 1. Folder picker via platform
   const handleImportFolder = async () => {
     setImportMenuOpen(false);
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Importar carpeta...',
-      });
-      if (selected && typeof selected === 'string') {
-        setPendingImportPaths([normalizePath(selected)]);
+      const selected = await getPlatform().pickDirectory({ title: 'Importar carpeta...' });
+      if (selected) {
+        setPendingImportPaths([normalizePath(selected.path)]);
         setImportOpen(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Folder picker error:', err);
     }
   };
 
-  // 2. Native files picker
+  // 2. Files picker via platform
   const handleImportFiles = async () => {
     setImportMenuOpen(false);
     try {
-      const selected = await open({
-        directory: false,
+      const selected = await getPlatform().pickFiles({
         multiple: true,
         title: 'Importar archivos...',
-        filters: [
-          {
-            name: 'Imágenes y RAW',
-            extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp', 'cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'],
-          },
-          {
-            name: 'Imágenes estándar',
-            extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp'],
-          },
-          {
-            name: 'Archivos RAW',
-            extensions: ['cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'],
-          },
-          { name: 'Todos los archivos', extensions: ['*'] },
-        ],
       });
-      if (selected) {
-        const paths = Array.isArray(selected) ? selected : [selected];
-        if (paths.length > 0) {
-          setPendingImportPaths(paths.map(normalizePath));
-          setImportOpen(true);
-        }
+      if (selected.length > 0) {
+        setPendingImportPaths(selected.map((s) => normalizePath(s.path)));
+        setImportOpen(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Files picker error:', err);
     }
   };
@@ -227,13 +204,53 @@ export function Toolbar() {
       }
     };
 
-    const handleHtmlDrop = (e: DragEvent) => {
+    const handleHtmlDrop = async (e: DragEvent) => {
       e.preventDefault();
       setIsDraggingOver(false);
-      // If HTML files list is present (e.g. from browser test)
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const fileNames = Array.from(e.dataTransfer.files).map((f) => (f as any).path || f.name);
-        setPendingImportPaths(fileNames);
+      if (!e.dataTransfer) return;
+
+      const collectedFiles: File[] = [];
+
+      // 1. Try modern File System Access getAsFileSystemHandle
+      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+        const items = Array.from(e.dataTransfer.items);
+        for (const item of items) {
+          if (typeof (item as any).getAsFileSystemHandle === 'function') {
+            try {
+              const handle = await (item as any).getAsFileSystemHandle();
+              if (handle) {
+                if (handle.kind === 'file') {
+                  collectedFiles.push(await (handle as FileSystemFileHandle).getFile());
+                } else if (handle.kind === 'directory') {
+                  const dirHandle = handle as FileSystemDirectoryHandle;
+                  for await (const entry of (dirHandle as any).values()) {
+                    if (entry.kind === 'file') {
+                      collectedFiles.push(await entry.getFile());
+                    }
+                  }
+                }
+              }
+            } catch {
+              // fallback
+            }
+          }
+        }
+      }
+
+      // 2. Fallback to standard files list
+      if (collectedFiles.length === 0 && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        collectedFiles.push(...Array.from(e.dataTransfer.files));
+      }
+
+      if (collectedFiles.length > 0) {
+        const { registerFileInMemory } = await import('../platform/web/handles');
+        const paths: string[] = [];
+        for (const f of collectedFiles) {
+          const vPath = `/web_import/${f.name}`.replace(/\\/g, '/');
+          registerFileInMemory(vPath, f);
+          paths.push(vPath);
+        }
+        setPendingImportPaths(paths);
         setImportOpen(true);
       }
     };

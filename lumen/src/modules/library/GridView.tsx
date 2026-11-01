@@ -134,40 +134,29 @@ export function GridView() {
 
   const handleEmptyImportFolder = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const selected = await open({ directory: true, multiple: false, title: 'Importar carpeta...' });
-      if (selected && typeof selected === 'string') {
-        setEmptyImportPaths([selected]);
+      const { getPlatform } = await import('../../platform');
+      const selected = await getPlatform().pickDirectory({ title: 'Importar carpeta...' });
+      if (selected) {
+        setEmptyImportPaths([selected.path]);
         setEmptyImportOpen(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Empty import folder error:', err);
     }
   };
 
   const handleEmptyImportFiles = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const selected = await open({
-        directory: false,
+      const { getPlatform } = await import('../../platform');
+      const selected = await getPlatform().pickFiles({
         multiple: true,
         title: 'Importar archivos...',
-        filters: [
-          {
-            name: 'Imágenes y RAW',
-            extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp', 'cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'],
-          },
-          { name: 'Todos los archivos', extensions: ['*'] },
-        ],
       });
-      if (selected) {
-        const paths = Array.isArray(selected) ? selected : [selected];
-        if (paths.length > 0) {
-          setEmptyImportPaths(paths);
-          setEmptyImportOpen(true);
-        }
+      if (selected.length > 0) {
+        setEmptyImportPaths(selected.map((s) => s.path));
+        setEmptyImportOpen(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Empty import files error:', err);
     }
   };

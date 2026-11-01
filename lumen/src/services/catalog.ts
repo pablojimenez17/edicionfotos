@@ -1,37 +1,19 @@
 /**
  * Catalog service — handles SQLite initialization, import, and queries.
- * All DB operations go through tauri-plugin-sql.
+ * Operates across Desktop (Tauri) and Web (SQLite-WASM + OPFS) via Platform abstraction.
  */
-import { invoke, convertFileSrc as tauriConvertFileSrc } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { getPlatform, isTauri as checkIsTauri } from '../platform';
+import { toast } from '../stores/toast';
 import { useCatalogStore } from '../stores/catalog';
 import type { Photo, Folder, RootFolder, ScannedPhoto, ScanResult, RemovableDrive } from '../types';
 import { BUILT_IN_PRESETS } from '../types/adjustments';
 
-let db: any = null;
-
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
+  return checkIsTauri();
 }
 
-async function getDb() {
-  if (db) return db;
-  // If running in Node / Vitest or browser without Tauri runtime
-  if (!isTauri()) {
-    return {
-      select: async () => [],
-      execute: async () => ({ rowsAffected: 0 }),
-    };
-  }
-  // Dynamic import for tauri-plugin-sql
-  const SQL = await import('@tauri-apps/plugin-sql');
-  db = await SQL.default.load('sqlite:lumen.db');
-  try {
-    await db.execute('PRAGMA foreign_keys = ON;');
-  } catch (err) {
-    console.warn('Failed to enable foreign_keys pragma:', err);
-  }
-  return db;
+export async function getDb() {
+  return getPlatform().initDatabase();
 }
 
 /**
@@ -80,48 +62,66 @@ export function splitSqlStatements(sql: string): string[] {
   return statements;
 }
 
+let initCatalogPromise: Promise<void> | null = null;
+
 /**
  * Initialize the catalog: run migrations and load folders/photos.
+ * Operates uniformly on Desktop (Tauri) and Web (SQLite WASM).
  */
-export async function initCatalog() {
-  if (!isTauri()) {
-    return;
-  }
-  const database = await getDb();
+export function initCatalog(): Promise<void> {
+  if (initCatalogPromise) return initCatalogPromise;
 
-  // Run migration (get SQL from Rust, execute statement by statement)
-  const migrationSql: string = await invoke('run_migration');
-
-  // Check if migration was already applied
-  try {
-    const existing = await database.select('SELECT version FROM schema_version WHERE version = 1');
-    if (existing.length > 0) {
-      // Already migrated, just load data
-      await loadCatalogData();
-      return;
-    }
-  } catch {
-    // Table doesn't exist yet, run migration
-  }
-
-  // Split migration into individual statements preserving triggers
-  const statements = splitSqlStatements(migrationSql);
-
-  for (const stmt of statements) {
+  initCatalogPromise = (async () => {
     try {
-      await database.execute(stmt);
-    } catch (err) {
-      console.warn('Migration statement warning:', stmt.substring(0, 80), err);
+      const database = await getDb();
+      const plat = getPlatform();
+
+      // Check if migration was already applied by verifying root_folders table exists
+      try {
+        const tableCheck = await database.select("SELECT name FROM sqlite_master WHERE type='table' AND name='root_folders'");
+        if (tableCheck.length > 0) {
+          // Already migrated, just load data
+          await loadCatalogData();
+          return;
+        }
+      } catch {
+        // Table doesn't exist yet, run migration
+      }
+
+      // Run migration (get SQL from platform, execute statement by statement)
+      const migrationSql: string = await plat.getMigrationSql();
+
+      // Split migration into individual statements preserving triggers
+      const statements = splitSqlStatements(migrationSql);
+
+      for (const stmt of statements) {
+        try {
+          await database.execute(stmt);
+        } catch (err: any) {
+          console.warn('Migration statement warning:', stmt.substring(0, 80), err?.message || err);
+        }
+      }
+
+      await loadCatalogData();
+    } catch (err: any) {
+      console.error('Failed to init catalog:', err);
+      toast.error(`Error al inicializar catálogo: ${err?.message || err}`);
+      initCatalogPromise = null;
+      throw err;
     }
+  })();
+
+  if (typeof window !== 'undefined') {
+    (window as any).__CATALOG_READY__ = initCatalogPromise;
   }
 
-  await loadCatalogData();
+  return initCatalogPromise;
 }
 
 /**
  * Load all folders and photos from the catalog into the store.
  */
-async function loadCatalogData() {
+export async function loadCatalogData() {
   const database = await getDb();
   const store = useCatalogStore.getState();
 
@@ -153,16 +153,14 @@ export async function importFolder() {
   const store = useCatalogStore.getState();
   if (store.isImporting) return;
 
-  // Open folder picker
-  const selectedPath = await open({
-    directory: true,
-    multiple: false,
+  // Open folder picker via platform
+  const selected = await getPlatform().pickDirectory({
     title: 'Seleccionar carpeta para importar',
   });
 
-  if (!selectedPath) return;
+  if (!selected) return;
 
-  const folderPath = normalizePath(selectedPath as string);
+  const folderPath = normalizePath(selected.path);
 
   store.setIsImporting(true);
   store.setImportProgress(0);
@@ -170,10 +168,10 @@ export async function importFolder() {
   try {
     const database = await getDb();
 
-    // Call Rust to scan the folder
-    const [folderName, scannedPhotos]: [string, ScannedPhoto[]] = await invoke('import_folder', {
-      folderPath,
-    });
+    // Call platform to scan the folder
+    const scanRes = await getPlatform().scanDirectory(selected);
+    const folderName = scanRes.folderName;
+    const scannedPhotos = scanRes.photos;
 
     if (scannedPhotos.length === 0) {
       store.setIsImporting(false);
@@ -354,26 +352,25 @@ async function generateThumbnails() {
   `);
 
   for (const photo of photos) {
-    const absolutePath = photo.root_path + '/' + photo.file_path;
+    const absolutePath = photo.root_path ? `${photo.root_path}/${photo.file_path}`.replace(/\/+/g, '/') : photo.file_path;
     try {
-      const thumbPath: string = await invoke('generate_thumbnail', {
-        sourcePath: absolutePath,
+      const thumbUrl: string = await getPlatform().generateThumbnail({
         photoId: photo.id,
-        size: 'thumb',
+        filePath: absolutePath,
       });
 
       // Record in previews table
       await database.execute(
         `INSERT OR REPLACE INTO previews (photo_id, size, cache_path, width, height, edit_hash)
          VALUES ($1, 'thumb', $2, 256, 256, '')`,
-        [photo.id, thumbPath],
+        [photo.id, thumbUrl],
       );
 
       // Update the photo in the store with the thumbnail URL
       useCatalogStore.getState().updatePhoto(photo.id, {
-        thumbnailUrl: convertFileSrc(thumbPath),
+        thumbnailUrl: thumbUrl,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Thumbnail generation failed for:', photo.filename, err);
     }
   }
@@ -383,11 +380,10 @@ async function generateThumbnails() {
  * Convert a file path to a URL that can be used in an <img> or WebGL texture.
  */
 export function convertFileSrc(filePath: string): string {
-  try {
-    return tauriConvertFileSrc(filePath);
-  } catch {
+  if (checkIsTauri() && typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
     return `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`;
   }
+  return filePath;
 }
 
 
@@ -486,10 +482,9 @@ export async function getPhotoSettings(photoId: number) {
     if (rows && rows.length > 0 && rows[0].settings) {
       return JSON.parse(rows[0].settings);
     }
-  } catch (err) {
-    console.error('Failed to get photo settings:', photoId, err);
+  } catch {
+    // Table not initialized or photo not found
   }
-  return null;
 }
 
 /**
@@ -521,8 +516,10 @@ export async function savePhotoSettings(photoId: number, settings: any, historyL
         [photoId, nextIdx, historyLabel, settingsStr],
       );
     }
-  } catch (err) {
-    console.error('Failed to save photo settings:', photoId, err);
+  } catch (err: any) {
+    if (!String(err?.message || err).includes('no such table')) {
+      console.error('Failed to save photo settings:', photoId, err);
+    }
   }
 }
 
@@ -692,12 +689,17 @@ export async function getCollectionPhotoIds(collectionId: number): Promise<numbe
 // ─────────────────────────────────────────────────────────────────────
 
 export async function scanPaths(paths: string[], recursive: boolean = true): Promise<ScanResult> {
-  return await invoke<ScanResult>('scan_paths', { paths, recursive });
+  const plat = getPlatform();
+  if (plat.name === 'tauri') {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<ScanResult>('scan_paths', { paths, recursive });
+  }
+  return plat.scanDirectory(paths[0] || '/web_import');
 }
 
 export async function listRemovableDrives(): Promise<RemovableDrive[]> {
   try {
-    return await invoke<RemovableDrive[]>('list_removable_drives');
+    return await getPlatform().getDrives();
   } catch (err) {
     console.warn('Failed to list removable drives:', err);
     return [];
@@ -847,25 +849,25 @@ export async function executeImportAdvanced(
           [
             defaultFolder.id,
             finalFilename,
-            photo.rel_path,
-            photo.file_size,
-            photo.file_hash,
-            photo.file_mtime,
-            photo.width,
-            photo.height,
-            photo.orientation,
-            photo.format,
-            photo.color_space,
-            photo.date_taken,
-            photo.camera_make,
-            photo.camera_model,
-            photo.lens,
-            photo.focal_length,
-            photo.aperture,
-            photo.shutter_speed,
-            photo.iso,
-            photo.gps_lat,
-            photo.gps_lng,
+            photo.file_path || photo.rel_path || photo.filename,
+            photo.file_size || 0,
+            photo.file_hash || `${finalFilename}_${Date.now()}`,
+            photo.file_mtime || new Date().toISOString(),
+            photo.width || 3840,
+            photo.height || 2160,
+            photo.orientation || 1,
+            photo.format || 'jpg',
+            photo.color_space || 'srgb',
+            photo.date_taken || new Date().toISOString(),
+            photo.camera_make || 'Cámara',
+            photo.camera_model || 'Estándar',
+            photo.lens || 'Estándar',
+            photo.focal_length || 50.0,
+            photo.aperture || 2.8,
+            photo.shutter_speed || '1/250s',
+            photo.iso || 100,
+            photo.gps_lat || null,
+            photo.gps_lng || null,
           ],
         );
 

@@ -4,6 +4,7 @@ import { useDevelopStore } from '../../stores/develop';
 import { useUiStore } from '../../stores/ui';
 import { DevelopPipeline } from '../../services/webgl/pipeline';
 import { convertFileSrc } from '../../services/catalog';
+import { platform } from '../../platform';
 
 export function DevelopCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -301,6 +302,37 @@ export function DevelopCanvas() {
           ANTES (Original sin ajustes) — Pulsa \ para alternar
         </div>
       )}
+
+      {/* RAW Notice on Web (Embedded preview vs full 16-bit) */}
+      {activePhoto &&
+        ['cr2', 'nef', 'arw', 'dng'].includes(activePhoto.format.toLowerCase()) &&
+        !platform.capabilities.rawFull && (
+          <div
+            id="raw-web-notice"
+            style={{
+              position: 'absolute',
+              top: 20,
+              right: 20,
+              backgroundColor: 'rgba(234, 179, 8, 0.2)',
+              border: '1px solid rgba(234, 179, 8, 0.4)',
+              backdropFilter: 'blur(8px)',
+              color: '#fef08a',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              zIndex: 10,
+            }}
+          >
+            <span>⚠️ Vista previa embebida</span>
+            <span style={{ opacity: 0.8, fontSize: '10px' }}>
+              · Revelado RAW completo a 16-bit disponible en escritorio
+            </span>
+          </div>
+        )}
 
       {/* Floating Canvas Toolbar (Bottom Center) */}
       <div

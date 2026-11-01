@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { getPlatform } from '../../platform';
 import { useCatalogStore } from '../../stores/catalog';
 import { useDevelopStore } from '../../stores/develop';
 import {
@@ -48,15 +48,13 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
   const handlePickFolder = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
+      const selected = await getPlatform().pickDirectory({
         title: 'Seleccionar carpeta de exportación',
       });
-      if (selected && typeof selected === 'string') {
-        setDestFolder(selected.replace(/\\/g, '/'));
+      if (selected) {
+        setDestFolder(selected.path.replace(/\\/g, '/'));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Folder pick failed:', err);
     }
   };
@@ -142,6 +140,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
       }}
     >
       <div
+        id="export-modal-dialog"
         style={{
           backgroundColor: '#18181b',
           border: '1px solid #3f3f46',
@@ -459,6 +458,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
             Cancelar
           </button>
           <button
+            id="btn-start-export"
             onClick={handleStartExport}
             disabled={isExporting || targetPhotos.length === 0}
             style={{

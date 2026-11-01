@@ -12,11 +12,13 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-fs": "^2.7.1",
     "@tauri-apps/plugin-shell": "^2.6.0",
     "@tauri-apps/plugin-sql": "^2.6.0",
+    "piexifjs": "^1.0.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zustand": "^5.0.16"

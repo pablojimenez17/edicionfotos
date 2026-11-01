@@ -1,6 +1,7 @@
 import React from 'react';
 import { useUiStore } from '../stores/ui';
 import { useCatalogStore, useFilteredPhotos } from '../stores/catalog';
+import { platform } from '../platform';
 
 export const StatusBar: React.FC = () => {
   const module = useUiStore((s) => s.module);
@@ -94,18 +95,61 @@ export const StatusBar: React.FC = () => {
         </div>
       )}
 
-      {/* Right: SQLite Catalog Status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10.5px' }}>
-        <span
-          style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            backgroundColor: 'var(--color-lumen-success)',
-            display: 'inline-block',
-          }}
-        />
-        <span>Catálogo SQLite sincronizado</span>
+      {/* Right: Environment & SQLite Catalog Status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '10.5px' }}>
+        {platform.name === 'tauri' ? (
+          <span
+            id="env-badge"
+            style={{
+              padding: '1px 6px',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(56, 189, 248, 0.15)',
+              color: '#38bdf8',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              fontWeight: 500,
+            }}
+            title="Corriendo en entorno de escritorio nativo con aceleración GPU y filesystem completo"
+          >
+            🖥️ Escritorio
+          </span>
+        ) : (
+          <a
+            id="env-badge"
+            href="https://github.com/pablojimenez17/edicionfotos/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: '1px 6px',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(52, 211, 153, 0.15)',
+              color: '#34d399',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              fontWeight: 500,
+              textDecoration: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            title="Versión Web (SQLite-WASM + OPFS). Haz clic para descargar la app nativa de escritorio."
+          >
+            <span>🌐 Web</span>
+            <span style={{ fontSize: '9px', opacity: 0.8 }}>· Descargar App ↗</span>
+          </a>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span
+            style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--color-lumen-success)',
+              display: 'inline-block',
+            }}
+          />
+          <span>Catálogo SQLite sincronizado</span>
+        </div>
       </div>
     </footer>
   );

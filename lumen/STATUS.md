@@ -9,53 +9,45 @@ Este documento clasifica con rigor técnico el estado funcional de cada módulo 
 
 ## Matriz de Clasificación
 
-| Módulo / Función | Estado | Detalle y Limitaciones / Dependencias Faltantes |
-|---|:---:|---|
-| **IMPORTACIÓN DESDE EL ORDENADOR** | | |
-| Selector nativo de carpetas y archivos con filtros | **REAL** | `tauri-plugin-dialog` con permisos en capabilities y filtros por Imágenes, RAW y Todos. |
-| Detección de unidades extraíbles / Tarjetas SD | **REAL** | Detección Win32 nativa en Rust con `GetLogicalDrives` y `GetDriveTypeW`. |
-| Historial de carpetas recientes | **REAL** | Últimas 10 carpetas almacenadas y accesibles desde el menú. |
-| Arrastrar y soltar (Drag and Drop) | **REAL** | `dragDropEnabled: true` y evento nativo `onDragDropEvent` con rutas reales y overlay visual "Suelta para importar". |
-| Pegar rutas (Ctrl+V) y atajo Ctrl+Shift+I | **REAL** | Lectura y saneamiento de rutas desde el portapapeles y atajo global. |
-| Diálogo de importación con escaneo previo y rejilla | **REAL** | Escaneo previo con contador ("248 fotos encontradas, 12 ya están en el catálogo, 3 formatos no compatibles"), detección y omisión automática de duplicados por hash parcial, soporte de RAWs con preview embebida, rejilla de miniaturas interactiva con checkboxes. |
-| Opciones de importación y barra de progreso | **REAL** | Aplicación de presets, etiquetado con keywords, renombrado con plantilla (`{filename}`, `{date}`, `{seq}`, `{camera}`), barra de progreso con botón cancelar y resumen final ("Importadas X, omitidas Y, con error Z") con botón "Ver en la biblioteca". |
-| Rutas con espacios, acentos y subcarpetas | **REAL** | Verificado en test de Rust `test_import_folder_with_spaces_accents_subfolders_duplicates_and_corrupt`. |
-| **FASE 4: EXPORTACIÓN** | | |
-| Exportación por teselas con Halo Dinámico | **REAL** | Margen dinámico calculado a partir del radio máximo de los filtros espaciales activos. Verificado con `tiledExportSeam.test.ts` (diferencia = 0 en costuras). |
-| Formatos de salida (JPEG, PNG, TIFF, WebP) | **REAL** | Implementado en Rust con el crate `image`. |
-| Plantillas de nomenclatura (`{filename}`, `{date}`, etc.) | **REAL** | Parseo y reemplazo testeado en Vitest. |
-| Presets de exportación | **REAL** | CRUD completo y persistencia en tabla `export_presets` de SQLite. |
-| Marca de agua de texto | **PARCIAL** | Renderizado de texto implementado en Rust. *Falta*: marcas de agua gráficas con canal alfa. |
-| Gestión de color e incrustación ICC / EXIF | **REAL** | Incrustación real de perfiles ICC (sRGB, Display P3, AdobeRGB) y EXIF/IPTC mediante `img-parts`. Testeado con releído binario en `test_export_jpeg_with_icc_profile_and_exif_reread`. |
-| **FASE 5: MOTOR RAW** | | |
-| Demosaicing Bayer (Bilineal) | **REAL** | Algoritmo implementado en Rust (`raw.rs`) y verificado mediante test unitario (`test_raw_bayer_demosaicing`). |
-| Extracción de preview JPEG embebida | **REAL** | Escaneo de marcadores SOI/EOI (0xFFD8–0xFFD9) en memoria Rust para miniaturas rápidas de catálogo. |
-| Decodificación RAW pura en Rust (.CR2, .NEF, .ARW, .DNG) | **REAL** | Decodificación a 16 bits sin FFI mediante el crate `rawloader`, con extracción de multiplicadores de balance de blancos (`wb_coeffs`) y matriz de color del sensor (`xyz_to_cam`). |
-| Perfiles de cámara y Balance de Blancos RAW | **REAL** | Multiplicadores `wb_coeffs` y matriz de color extraídos directamente de la cabecera RAW en Rust. |
-| **FASE 6: REVELADO AVANZADO** | | |
-| Pases espaciales (Claridad, Textura, Dehaze, Bilateral NR) | **REAL** | Shaders GLSL independientes ejecutados en FBOs ping-pong RGBA16F (`spatialShader.ts`), atmósfera global calculada en preview y pasada como uniform. Testeado sin costuras. |
-| Sliders Blancos y Negros | **REAL** | Integrados en el uber-shader puntual en espacio lineal. |
-| Curvas de tono (Paramétrica y por canal R, G, B) | **REAL** | Textura de consulta LUT generada dinámicamente y evaluada en WebGL2. |
-| Gradación de color (Color Grading 3-Way) | **REAL** | Ruedas de Sombras, Tonos Medios y Luces con cálculo de luminancia y controles de balance y fusión. |
-| Reducción de ruido y enfoque | **REAL** | Filtro bilateral espacial de 9 muestras y unsharp masking en GPU. |
-| Correcciones de lente (Lensfun) | **REAL** | Parser XML de Lensfun en Rust, cálculo de coeficientes polinómicos de distorsión (`poly3`, `poly5`), corrección en shader y atribución CC-BY-SA 3.0 / LGPL v3 en la interfaz. |
-| Viñeteo posterior al recorte | **REAL** | Fórmula cuadrática basada en coordenadas normalizadas del recorte. |
-| Grano fílmico analógico | **REAL** | Generador pseudo-aleatorio basado en coordenadas globales de píxel, invariante al zoom y teselas. |
-| Calibración de cámara | **REAL** | Controles de tinte de sombras y calibración de primarios RGB en el shader puntual. |
-| Guías de composición de recorte | **REAL** | SVG interactivo con regla de los tercios, espiral áurea, diagonales y cuadrícula. |
-| Eliminación de manchas (Clone / Heal) | **PARCIAL** | Pines con radio y desvanecimiento interactivo en lienzo. *Falta*: solver Poisson (Seamless Cloning). |
-| Pincel de ajuste local | **REAL** | Trazos con flujo, densidad y tamaño guardados en base de datos (`brush_strokes`) y rasterizados. |
-| Máscaras de rango de Luminancia y Color | **REAL** | Shaders de selección por rango tonal y distancia cromática en espacio Lab/RGB. |
-| Modos Antes / Después (4 modos) | **REAL** | Vista simple, split vertical interactivo, split horizontal y lado a lado. |
-| Prueba en pantalla (Soft Proofing) | **PARCIAL** | Simulación de contraste y compresión de gamut en lienzo. *Falta*: enlace con LittleCMS para perfiles de papel e impresora específicos. |
-| **FASE 7: MÓDULOS ADICIONALES Y SERVICIOS** | | |
-| Módulo Mapa (GPS) | **PARCIAL** | Pines de fotos, cálculo Mercator y geocodificación. Sin clave de proveedor de mapas (API key de Mapbox/OSM) solo se muestra la retícula de coordenadas/grilla. |
-| Módulo Libro (Photobook) | **REAL** | Diseñador interactivo y exportador PDF nativo con `printpdf` a disco (`test_pdf_photobook_and_web_gallery_export`). |
-| Módulo Presentación (Slideshow) | **REAL** | Reproductor con temporizador, transiciones (Disolución, Ken Burns dinámico), superposición de EXIF y pantalla completa. |
-| Módulo Impresión | **PARCIAL** | Maquetación a 300 ppp / 240 ppp con llamada nativa a `window.print()`. |
-| Módulo Web (Galería HTML5) | **REAL** | Exportación física a disco con paquete completo (`index.html`, `style.css` y miniaturas) mediante comando nativo de Rust. |
-| Captura Conectada (Tethering) | **PRÓXIMAMENTE** | Oculta con badge de "Próximamente" y diálogo informativo sobre la necesidad de drivers nativos USB/PTP de fabricante. |
-| Servicios de Publicación | **PRÓXIMAMENTE** | Oculta con badge de "Próximamente" y aviso sobre credenciales API/OAuth2 de Flickr y Adobe Stock. |
+| Módulo / Función | Estado | Web / Escritorio | Detalle y Limitaciones / Dependencias Faltantes |
+|---|:---:|:---:|---|
+| **IMPORTACIÓN Y ARCHIVOS** | | | |
+| Selector de carpetas y archivos con filtros | **REAL** | **Web y Escritorio** | En Escritorio: `tauri-plugin-dialog` con capacidades nativas. En Web: `showOpenFilePicker`/`showDirectoryPicker` con respaldo a `<input type="file" multiple>` y `webkitdirectory`. |
+| Detección de unidades extraíbles / Tarjetas SD | **REAL** | **Solo Escritorio** *(Aviso en Web)* | Detección Win32 nativa en Rust (`GetLogicalDrives`). En Web muestra diálogo explicativo con enlace a la app de escritorio. |
+| Historial de carpetas recientes | **REAL** | **Web y Escritorio** | Persistencia en SQLite/IndexedDB de las últimas 10 carpetas importadas accesibles desde el menú. |
+| Arrastrar y soltar (Drag and Drop) | **REAL** | **Web y Escritorio** | En Escritorio: evento nativo `onDragDropEvent` de Tauri. En Web: `getAsFileSystemHandle()` con respaldo `webkitGetAsEntry()`. |
+| Pegar rutas (Ctrl+V) y atajo Ctrl+Shift+I | **REAL** | **Web y Escritorio** | Lectura y saneamiento de rutas desde el portapapeles y atajo global en ambos entornos. |
+| Diálogo de importación con escaneo previo y rejilla | **REAL** | **Web y Escritorio** | Escaneo previo con contador ("248 fotos encontradas, 12 en catálogo"), detección de duplicados por hash, previews embebidas y rejilla con checkboxes. |
+| Opciones de importación y barra de progreso | **REAL** | **Web y Escritorio** | Renombrado por plantilla (`{filename}`, `{date}`, `{seq}`, `{camera}`), aplicación de presets, keywords y resumen final. |
+| Persistencia de directorios en Web | **REAL** | **Web** | Handles de carpetas persistidos en IndexedDB con reconcesión de permisos al volver; respaldo copia automática a OPFS. |
+| **CATÁLOGO Y BASE DE DATOS** | | | |
+| Motor SQLite y Migraciones idénticas | **REAL** | **Web y Escritorio** | En Escritorio: `tauri-plugin-sql` (SQLite C). En Web: `@sqlite.org/sqlite-wasm` con VFS `opfs-sahpool` en Web Worker. Ejecutan exactamente el mismo `001_initial.sql`. |
+| Búsqueda de texto completo (FTS5) | **REAL** | **Web y Escritorio** | Tabla virtual FTS5 (`photos_fts`) con triggers por `rowid` para sincronización instantánea de nombres de archivo y keywords en ambos entornos. |
+| **FASE 4: EXPORTACIÓN** | | | |
+| Exportación por teselas con Halo Dinámico | **REAL** | **Web y Escritorio** | Renderizado WebGL2 por teselas con margen de seguridad dinámico sin costuras (`tiledExportSeam.test.ts`). |
+| Codificación de formatos | **REAL** | **Web y Escritorio** | En Escritorio: JPEG, PNG, TIFF, WebP vía Rust `image`. En Web: JPEG, PNG, WebP vía Web Worker / OffscreenCanvas `toBlob`. |
+| Gestión de color e incrustación ICC / EXIF | **REAL** | **Web y Escritorio** | En Escritorio: inyección binaria con `img-parts` en Rust. En Web: generador puro TypeScript (`icc.ts`) inyectando perfil ICC (sRGB, Display P3, AdobeRGB) y marcadores EXIF. |
+| Guardado de exportación | **REAL** | **Web y Escritorio** | En Escritorio: guardado directo en ruta de disco. En Web: `showSaveFilePicker` nativo con respaldo a descarga automática `<a download>`. |
+| Presets de exportación y plantillas | **REAL** | **Web y Escritorio** | CRUD completo de presets en tabla SQLite y motor de reemplazo de variables. |
+| Marca de agua de texto | **PARCIAL** | **Solo Escritorio** | Renderizado en Rust. Falta soporte gráfico con canal alfa y renderizado en Worker web. |
+| **FASE 5: MOTOR RAW** | | | |
+| Extracción de preview JPEG embebida | **REAL** | **Web y Escritorio** | Escaneo de marcadores SOI/EOI (0xFFD8–0xFFD9) para miniaturas instantáneas en catálogo y tira de película. |
+| Decodificación RAW pura a 16 bits | **REAL** | **Solo Escritorio** *(Web: preview + aviso)* | En Escritorio: `rawloader` decodifica a 16 bits RGB con balance de blancos y matriz de color del sensor. En Web: muestra la preview embebida de alta resolución con aviso claro ("RAW completo disponible en app de escritorio") y ruta preparada para compilación WASM de rawloader. |
+| Demosaicing Bayer (Bilineal) | **REAL** | **Solo Escritorio** | Implementado en Rust (`raw.rs`) y verificado con test unitario. |
+| **FASE 6: REVELADO AVANZADO (GPU WEBGL2)** | | | |
+| Pipeline WebGL2 (Uber-Shader + Pases Espaciales) | **REAL** | **Web y Escritorio** | Claridad, Textura, Dehaze, Bilateral NR, Curvas de tono LUT, Color Grading 3-Way, Viñeteo, Grano fílmico y Calibración ejecutados con idénticos shaders GLSL. |
+| Correcciones de lente (Lensfun) | **REAL** | **Solo Escritorio** *(Aviso en Web)* | En Escritorio: base de datos Lensfun embebida en Rust y distorsión calculada en shader. En Web: aviso de disponibilidad en la app de escritorio. |
+| Herramientas locales (Pincel, Gradientes, Máscaras) | **REAL** | **Web y Escritorio** | Máscaras de luminosidad/color y pincel local almacenados en tabla `brush_strokes` de SQLite. |
+| Modos Antes / Después y Recorte | **REAL** | **Web y Escritorio** | 4 modos de comparación (simple, split V/H, lado a lado) y recorte con guías SVG interactivas. |
+| Prueba en pantalla (Soft Proofing) | **PARCIAL** | **Web y Escritorio** | Simulación de contraste y compresión de gamut. Falta enlace con LittleCMS para perfiles ICC de impresora específicos. |
+| **FASE 7: MÓDULOS ADICIONALES Y SERVICIOS** | | | |
+| Módulo Mapa (GPS) | **PARCIAL** | **Web y Escritorio** | Cálculo de coordenadas Mercator y posicionamiento de pines. Requiere clave de proveedor (configurada en variables de entorno Vercel `VITE_MAPBOX_KEY`). |
+| Módulo Libro (Photobook) | **REAL** | **Escritorio / Web parcial** | Diseñador interactivo en Web y Escritorio; exportación PDF física con `printpdf` en Escritorio. |
+| Módulo Presentación (Slideshow) | **REAL** | **Web y Escritorio** | Reproductor con transiciones Ken Burns y disolución en pantalla completa. |
+| Módulo Impresión | **PARCIAL** | **Web y Escritorio** | Maquetación a 300/240 ppp con llamada nativa a `window.print()`. |
+| Módulo Web (Galería HTML5) | **REAL** | **Escritorio / Web parcial** | Generador de galería estática responsive. En Escritorio escribe paquete directo a disco. |
+| Captura Conectada (Tethering) | **PRÓXIMAMENTE** | **Solo Escritorio futuro** | Oculta con badge de "Próximamente" y diálogo informativo sobre la necesidad de drivers nativos USB/PTP de fabricante. |
+| Servicios de Publicación | **PRÓXIMAMENTE** | **Solo Escritorio futuro** | Oculta con badge de "Próximamente" y aviso sobre credenciales OAuth2 de Flickr y Adobe Stock. |
 
 ---
 

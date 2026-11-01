@@ -141,6 +141,8 @@ export interface ScanResult {
   unsupported_count: number;
   corrupted_count: number;
   warnings: string[];
+  rootPath?: string;
+  folderName?: string;
 }
 
 export interface RemovableDrive {

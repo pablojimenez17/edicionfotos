@@ -8,9 +8,16 @@ export default defineConfig({
   // Prevent vite from obscuring Rust errors
   clearScreen: false,
   // Tauri expects a fixed port, fail if that port is not available
+  optimizeDeps: {
+    exclude: ['@sqlite.org/sqlite-wasm'],
+  },
   server: {
     port: 5173,
     strictPort: true,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
     watch: {
       ignored: ['**/src-tauri/**'],
     },

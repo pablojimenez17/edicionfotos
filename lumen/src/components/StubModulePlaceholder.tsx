@@ -89,22 +89,45 @@ export const StubModulePlaceholder: React.FC<StubModuleProps> = ({
           )}
         </div>
 
-        <button
-          onClick={() => setModule('library')}
-          style={{
-            marginTop: '8px',
-            backgroundColor: 'var(--color-lumen-surface)',
-            border: '1px solid var(--color-lumen-border)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--color-lumen-text)',
-            padding: '8px 16px',
-            fontSize: '12px',
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
-        >
-          Volver a Biblioteca (G)
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '12px' }}>
+          <button
+            onClick={() => setModule('library')}
+            style={{
+              backgroundColor: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-lumen-text)',
+              padding: '8px 16px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            Volver a Biblioteca (G)
+          </button>
+          <a
+            href="https://github.com/pablojimenez17/edicionfotos/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              backgroundColor: 'var(--color-lumen-accent, #ff7a2f)',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              color: '#fff',
+              padding: '8px 16px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span>Descargar versión Escritorio</span>
+            <span>↗</span>
+          </a>
+        </div>
       </div>
     </div>
   );

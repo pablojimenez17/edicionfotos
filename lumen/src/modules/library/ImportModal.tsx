@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { getPlatform } from '../../platform';
 import {
   scanPaths,
   executeImportAdvanced,
@@ -107,59 +107,76 @@ export function ImportModal({ isOpen, onClose, initialPaths = [] }: ImportModalP
 
   if (!isOpen) return null;
 
-  // Directory picker
+  // Directory picker via platform
   const handlePickSourceFolder = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
+    const selected = await getPlatform().pickDirectory({
       title: 'Seleccionar carpeta de origen',
     });
-    if (selected && typeof selected === 'string') {
-      const p = [normalizePath(selected)];
+    if (selected) {
+      const p = [normalizePath(selected.path)];
       setSourcePaths(p);
-      performScan(p, recursive);
+      setIsScanning(true);
+      try {
+        const res = await getPlatform().scanDirectory(selected);
+        setScanResult(res);
+        const existingHashes = new Set(useCatalogStore.getState().photos.map((p) => p.file_hash).filter(Boolean));
+        setDuplicateHashes(existingHashes);
+        const newSelected = new Set<number>();
+        res.photos.forEach((photo, idx) => {
+          if (!existingHashes.has(photo.file_hash)) {
+            newSelected.add(idx);
+          }
+        });
+        setSelectedIndices(newSelected);
+      } finally {
+        setIsScanning(false);
+      }
     }
   };
 
-  // Files picker
+  // Files picker via platform
   const handlePickSourceFiles = async () => {
-    const selected = await open({
-      directory: false,
+    const selectedFiles = await getPlatform().pickFiles({
       multiple: true,
       title: 'Seleccionar archivos para importar',
-      filters: [
-        {
-          name: 'Imágenes y RAW',
-          extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp', 'cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'],
-        },
-        {
-          name: 'Imágenes estándar',
-          extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp'],
-        },
-        {
-          name: 'Archivos RAW',
-          extensions: ['cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'],
-        },
-        { name: 'Todos los archivos', extensions: ['*'] },
-      ],
     });
-    if (selected) {
-      const paths = Array.isArray(selected) ? selected : [selected];
-      if (paths.length > 0) {
-        setSourcePaths(paths);
+    if (selectedFiles.length > 0) {
+      const paths = selectedFiles.map((f) => f.path);
+      setSourcePaths(paths);
+      if (getPlatform().name === 'web') {
+        setIsScanning(true);
+        try {
+          const files = selectedFiles.map((f) => f.file!).filter(Boolean);
+          const res = await getPlatform().scanDirectory({
+            name: 'Fotos',
+            path: '/web_import',
+            files,
+          });
+          setScanResult(res);
+          const existingHashes = new Set(useCatalogStore.getState().photos.map((p) => p.file_hash).filter(Boolean));
+          setDuplicateHashes(existingHashes);
+          const newSelected = new Set<number>();
+          res.photos.forEach((photo, idx) => {
+            if (!existingHashes.has(photo.file_hash)) {
+              newSelected.add(idx);
+            }
+          });
+          setSelectedIndices(newSelected);
+        } finally {
+          setIsScanning(false);
+        }
+      } else {
         performScan(paths, recursive);
       }
     }
   };
 
   const handlePickTarget = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
+    const selected = await getPlatform().pickDirectory({
       title: 'Seleccionar carpeta de destino para la fototeca',
     });
-    if (selected && typeof selected === 'string') {
-      setTargetPath(selected);
+    if (selected) {
+      setTargetPath(normalizePath(selected.path));
     }
   };
 

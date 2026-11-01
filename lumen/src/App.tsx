@@ -8,6 +8,7 @@ import { GlossaryModal } from './components/GlossaryModal';
 import { ModuleBar } from './components/ModuleBar';
 import { Toolbar } from './components/Toolbar';
 import { StatusBar } from './components/StatusBar';
+import { ToastContainer } from './components/ToastContainer';
 import { LibraryModule } from './modules/library/LibraryModule';
 import { DevelopModule } from './modules/develop/DevelopModule';
 import { MapModule } from './modules/map/MapModule';
@@ -16,6 +17,7 @@ import { SlideshowModule } from './modules/slideshow/SlideshowModule';
 import { PrintModule } from './modules/print/PrintModule';
 import { WebModule } from './modules/web/WebModule';
 import { initCatalog } from './services/catalog';
+import { toast } from './stores/toast';
 
 export default function App() {
   const module = useUiStore((s) => s.module);
@@ -28,7 +30,10 @@ export default function App() {
 
   // Initialize catalog on mount
   useEffect(() => {
-    initCatalog().catch((err) => console.error('Failed to init catalog:', err));
+    initCatalog().catch((err: any) => {
+      console.error('Failed to init catalog:', err);
+      toast.error(`Error inicializando base de datos: ${err?.message || err}`);
+    });
   }, []);
 
   // Global keyboard shortcuts
@@ -143,6 +148,7 @@ export default function App() {
       <WalkthroughModal isOpen={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
       <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <GlossaryModal isOpen={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
+      <ToastContainer />
     </div>
   );
 }

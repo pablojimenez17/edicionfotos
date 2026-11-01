@@ -1,6 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import { getPlatform, isTauri } from '../../platform';
 import type { Photo, LumenSettings } from '../../types';
-import { isTauri } from '../catalog';
 
 export interface ExportOptions {
   destinationFolder: string;
@@ -115,12 +114,62 @@ export async function exportPhotoTiled(
   );
   const outPath = `${options.destinationFolder.replace(/\\/g, '/').replace(/\/$/, '')}/${outFilename}`;
 
-  // If running in browser without Tauri (e.g. tests), return mock path
+  // Web platform export execution
   if (!isTauri()) {
+    const plat = getPlatform();
+    const sessionId = `export_${photo.id}_${Date.now()}`;
+    const tileSize = options.tileSize || 1024;
+    const numTilesX = Math.ceil(outW / tileSize);
+    const numTilesY = Math.ceil(outH / tileSize);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = tileSize;
+    canvas.height = tileSize;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    const res = await plat.exportPhoto(
+      {
+        exportId: sessionId,
+        photoId: photo.id,
+        sourcePath: photo.file_path,
+        defaultFilename: outFilename,
+        format: options.format,
+        quality: options.quality,
+        colorSpace: options.colorSpace,
+        width: outW,
+        height: outH,
+        tilesX: numTilesX,
+        tilesY: numTilesY,
+        tileSize,
+      },
+      async (tx: number, ty: number, tSize: number) => {
+        const tileX = tx * tSize;
+        const tileY = ty * tSize;
+        const curW = Math.min(tSize, outW - tileX);
+        const curH = Math.min(tSize, outH - tileY);
+        if (ctx) {
+          ctx.clearRect(0, 0, tSize, tSize);
+          ctx.drawImage(
+            imgElement,
+            (tileX * origW) / outW,
+            (tileY * origH) / outH,
+            (curW * origW) / outW,
+            (curH * origH) / outH,
+            0,
+            0,
+            curW,
+            curH
+          );
+          return ctx.getImageData(0, 0, tSize, tSize);
+        }
+        return new Uint8Array(tSize * tSize * 4);
+      }
+    );
     onProgress?.(1);
-    return outPath;
+    return res.savedPath;
   }
 
+  const { invoke } = await import('@tauri-apps/api/core');
   const sessionId = `export_${photo.id}_${Date.now()}`;
   await invoke('create_export_session', {
     sessionId,
