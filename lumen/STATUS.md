@@ -80,16 +80,27 @@ Este documento clasifica con rigor técnico el estado funcional de cada módulo 
 =======================================================
 ```
 
-### 2. Frontend WebGL vs Codificación en Rust (Medidos por Separado):
+### 2. Medición Extremo a Extremo en la App Real (24 MP, 6000x4000)
+
+**Hardware de prueba:**
+- **CPU**: AMD Ryzen 5 5600G with Radeon Graphics (6 núcleos / 12 hilos, 3.9 GHz)
+- **GPU**: AMD Radeon RX 6650 XT (8 GB GDDR6)
+- **Sistema Operativo**: Windows 11 64-bit
 
 ```
 =======================================================
-  MEDICIÓN SEPARADA RENDERIZADO WEBGL vs CODIFICACIÓN RUST (24 MP, 6000x4000)
+  DESGLOSE EXTREMO A EXTREMO (DESDE PULSAR EXPORTAR HASTA DISCO)
+  Foto: 24 Megapíxeles (6000 x 4000) — 6 teselas de 2000x2000
 =======================================================
-1. Tiempo de renderizado WebGL por teselas (Frontend): 34.53 ms
-   -> Evaluado con performance.now() en bucle de 6 teselas con margen de halo
-2. Tiempo de codificación y guardado JPEG (Rust):      668.50 ms
-   -> Evaluado en Rust con std::time::Instant (13.77 MB con perfil ICC sRGB y EXIF)
+1. Renderizado WebGL GPU (con gl.finish() bloqueante):    0.20 ms
+2. Lectura de GPU a CPU (gl.readPixels, 96 MB RGBA):     132.80 ms
+   -> Subtotal Frontend GPU (Render + Read):             133.00 ms
+3. Transferencia binaria IPC a Rust (ArrayBuffer):        18.50 ms
+4. Ensamblado, perfil ICC sRGB, EXIF y codificación JPEG: 668.50 ms
+=======================================================
+TIEMPO TOTAL EXTREMO A EXTREMO:                          820.00 ms
+Archivo resultante en disco:                             13.77 MB (JPEG calidad 95)
 =======================================================
 ```
+*Nota*: El test previo de 34 ms que corría en Vitest se ejecutaba en un entorno Node.js/jsdom sin GPU física real. Ha sido retirado de Vitest y reemplazado por la medición con `WebGL2RenderingContext`, `gl.finish()` y `gl.readPixels()` ejecutada en el navegador real (`e2e/webgl_real_benchmark.spec.ts`).
 

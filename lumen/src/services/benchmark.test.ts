@@ -73,46 +73,14 @@ describe('Performance Benchmarks', () => {
     const t5 = performance.now();
     const switchPhotoDurationMs = t5 - t4;
 
-    // 4. Benchmark: 24 MP (6000x4000) WebGL / Offscreen Canvas Tiled Rendering
-    // Measured in isolation using performance.now() without mixing with Rust backend encoding
-    const W = 6000;
-    const H = 4000;
-    const TILE_SIZE = 2048;
-    const HALO = 16;
-    const numTilesX = Math.ceil(W / TILE_SIZE); // 3 tiles
-    const numTilesY = Math.ceil(H / TILE_SIZE); // 2 tiles
-    let processedPixelCount = 0;
-
-    const tWebglStart = performance.now();
-    for (let ty = 0; ty < numTilesY; ty++) {
-      for (let tx = 0; tx < numTilesX; tx++) {
-        const tw = Math.min(TILE_SIZE, W - tx * TILE_SIZE);
-        const th = Math.min(TILE_SIZE, H - ty * TILE_SIZE);
-        const tilePixels = (tw + HALO * 2) * (th + HALO * 2);
-        processedPixelCount += tilePixels;
-        // Offscreen WebGL / RGBA pixel buffer evaluation
-        const tileBuffer = new Uint8ClampedArray(tilePixels * 4);
-        for (let p = 0; p < tilePixels; p += 128) {
-          tileBuffer[p * 4] = 120;
-          tileBuffer[p * 4 + 1] = 140;
-          tileBuffer[p * 4 + 2] = 160;
-          tileBuffer[p * 4 + 3] = 255;
-        }
-      }
-    }
-    const tWebglEnd = performance.now();
-    const webglTileRenderDurationMs = tWebglEnd - tWebglStart;
-
     console.log(`\n=======================================================`);
-    console.log(`  FRONTEND BENCHMARK MEASUREMENTS (performance.now)`);
+    console.log(`  FRONTEND STATE BENCHMARK MEASUREMENTS (performance.now en Vitest)`);
     console.log(`=======================================================`);
     console.log(`1. Importar 1.000 fotos (memoria + catálogo): ${importDurationMs.toFixed(2)} ms`);
     console.log(`2. Abrir y ordenar cuadrícula (1.000 fotos con virtualización): ${openGridDurationMs.toFixed(2)} ms`);
     console.log(`3. Cambiar de foto en Revelado (cargar ajustes + historial): ${switchPhotoDurationMs.toFixed(2)} ms`);
-    console.log(`4. Renderizado WebGL/Canvas teselado 24 MP (6000x4000, 6 teselas con halo): ${webglTileRenderDurationMs.toFixed(2)} ms`);
-    console.log(`   -> Píxeles totales evaluados: ${(processedPixelCount / 1_000_000).toFixed(1)} MPixels`);
-    console.log(`   -> NOTA: Este tiempo es EXCLUSIVO del render WebGL/Canvas en frontend,`);
-    console.log(`      separado del tiempo de compresión JPEG en Rust (Backend).`);
+    console.log(`   -> NOTA: El renderizado WebGL2 GPU real se mide en la app real/Chromium`);
+    console.log(`      (e2e/webgl_real_benchmark.spec.ts) con contexto WebGL2 físico y gl.finish().`);
     console.log(`=======================================================\n`);
   });
 });
