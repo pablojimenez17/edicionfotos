@@ -7,10 +7,15 @@ import { DevelopPanels } from './DevelopPanels';
 import { DevelopLeftPanel } from './DevelopLeftPanel';
 import { SyncSettingsModal } from './SyncSettingsModal';
 import { Filmstrip } from '../../components/Filmstrip';
+import { PanelResizer } from '../../components/PanelResizer';
 
 export function DevelopModule() {
   const leftPanelOpen = useUiStore((s) => s.leftPanelOpen);
   const rightPanelOpen = useUiStore((s) => s.rightPanelOpen);
+  const leftPanelWidth = useUiStore((s) => s.leftPanelWidth);
+  const rightPanelWidth = useUiStore((s) => s.rightPanelWidth);
+  const setLeftPanelWidth = useUiStore((s) => s.setLeftPanelWidth);
+  const setRightPanelWidth = useUiStore((s) => s.setRightPanelWidth);
   const activePhotoId = useCatalogStore((s) => s.activePhotoId);
   const selectedPhotoIds = useCatalogStore((s) => s.selectedPhotoIds);
 
@@ -59,9 +64,9 @@ export function DevelopModule() {
       {/* Develop Toolbar */}
       <div
         style={{
-          height: '32px',
-          backgroundColor: '#18181b',
-          borderBottom: '1px solid #27272a',
+          height: '34px',
+          backgroundColor: 'var(--color-lumen-bg-deep)',
+          borderBottom: '1px solid var(--color-lumen-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -73,12 +78,13 @@ export function DevelopModule() {
           <button
             onClick={toggleBeforeAfter}
             style={{
-              backgroundColor: showBeforeAfter ? '#ef4444' : '#27272a',
-              border: '1px solid #3f3f46',
-              borderRadius: '3px',
-              color: '#fff',
+              backgroundColor: showBeforeAfter ? 'var(--color-lumen-accent)' : 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: 'var(--radius-xs)',
+              color: 'var(--color-lumen-text)',
               padding: '3px 8px',
               cursor: 'pointer',
+              fontWeight: 500,
             }}
             title="Comparativa Antes / Después (tecla \)"
           >
@@ -88,10 +94,10 @@ export function DevelopModule() {
           <button
             onClick={copySettings}
             style={{
-              backgroundColor: '#27272a',
-              border: '1px solid #3f3f46',
-              borderRadius: '3px',
-              color: '#e4e4e7',
+              backgroundColor: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: 'var(--radius-xs)',
+              color: 'var(--color-lumen-text)',
               padding: '3px 8px',
               cursor: 'pointer',
             }}
@@ -104,10 +110,10 @@ export function DevelopModule() {
             onClick={pasteSettings}
             disabled={!clipboardSettings}
             style={{
-              backgroundColor: clipboardSettings ? '#27272a' : '#1c1c1f',
-              border: '1px solid #3f3f46',
-              borderRadius: '3px',
-              color: clipboardSettings ? '#e4e4e7' : '#52525b',
+              backgroundColor: clipboardSettings ? 'var(--color-lumen-surface)' : 'transparent',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: 'var(--radius-xs)',
+              color: clipboardSettings ? 'var(--color-lumen-text)' : 'var(--color-lumen-disabled)',
               padding: '3px 8px',
               cursor: clipboardSettings ? 'pointer' : 'default',
             }}
@@ -119,12 +125,13 @@ export function DevelopModule() {
           <button
             onClick={() => setSyncModalOpen(true)}
             style={{
-              backgroundColor: '#27272a',
-              border: '1px solid #3f3f46',
-              borderRadius: '3px',
-              color: '#38bdf8',
+              backgroundColor: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: 'var(--radius-xs)',
+              color: 'var(--color-lumen-accent)',
               padding: '3px 8px',
               cursor: 'pointer',
+              fontWeight: 500,
             }}
             title="Sincronizar ajustes con fotos seleccionadas (Ctrl+Shift+S)"
           >
@@ -136,10 +143,10 @@ export function DevelopModule() {
           <button
             onClick={resetAll}
             style={{
-              backgroundColor: '#27272a',
-              border: '1px solid #3f3f46',
-              borderRadius: '3px',
-              color: '#ef4444',
+              backgroundColor: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: 'var(--radius-xs)',
+              color: 'var(--color-lumen-danger)',
               padding: '3px 8px',
               cursor: 'pointer',
             }}
@@ -150,11 +157,23 @@ export function DevelopModule() {
         </div>
       </div>
 
-      {/* Main Body: Left Panel + Canvas + Right Panels */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {leftPanelOpen && <DevelopLeftPanel />}
-        <DevelopCanvas />
-        {rightPanelOpen && <DevelopPanels />}
+      {/* Main Body: Left Panel + Resizer + Canvas + Resizer + Right Panels */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+        {leftPanelOpen && (
+          <>
+            <DevelopLeftPanel />
+            <PanelResizer side="left" currentWidth={leftPanelWidth} onResize={setLeftPanelWidth} />
+          </>
+        )}
+        <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
+          <DevelopCanvas />
+        </div>
+        {rightPanelOpen && (
+          <>
+            <PanelResizer side="right" currentWidth={rightPanelWidth} onResize={setRightPanelWidth} />
+            <DevelopPanels />
+          </>
+        )}
       </div>
 
       {/* Filmstrip at the bottom */}

@@ -3,6 +3,11 @@ import { useDevelopStore } from '../../stores/develop';
 import { useUiStore } from '../../stores/ui';
 import { HSL_BAND_NAMES, CROP_RATIOS } from '../../types';
 import { MaskPanel } from './MaskPanel';
+import { AccessibleSlider } from '../../components/AccessibleSlider';
+import { DevelopHelpBar } from './DevelopHelpBar';
+import { Histogram } from '../../components/Histogram';
+import { useHelpStore } from '../../help/helpStore';
+
 
 export function DevelopPanels({
   activeMaskIndex,
@@ -17,10 +22,6 @@ export function DevelopPanels({
 }) {
   const settings = useDevelopStore((s) => s.settings);
   const updateSetting = useDevelopStore((s) => s.updateSetting);
-
-  const clippingWarnings = useUiStore((s) => s.showClippingWarnings);
-
-  const toggleClipping = useUiStore((s) => s.toggleClippingWarnings);
 
   const [localActiveMaskIndex, setLocalActiveMaskIndex] = useState(0);
   const [localShowOverlay, setLocalShowOverlay] = useState(false);
@@ -49,41 +50,31 @@ export function DevelopPanels({
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const rightPanelWidth = useUiStore((s) => s.rightPanelWidth);
+
   return (
-    <div className="side-panel side-panel--right" style={{ width: '310px', overflowY: 'auto' }}>
-      {/* Histogram Header with Clipping indicators */}
-      <div
-        className="panel-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '6px 12px',
-        }}
-      >
-        <span>Histograma</span>
-        <button
-          onClick={toggleClipping}
-          title="Alternar avisos de recorte (J)"
-          style={{
-            background: clippingWarnings ? '#3b82f6' : '#27272a',
-            border: 'none',
-            borderRadius: '3px',
-            color: '#fff',
-            fontSize: '10px',
-            padding: '2px 6px',
-            cursor: 'pointer',
-          }}
-        >
-          {clippingWarnings ? 'Recorte ACTIVO (J)' : 'Avisos recorte (J)'}
-        </button>
-      </div>
+    <div
+      className="panel panel--right"
+      style={{
+        width: `${rightPanelWidth}px`,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
+        flexShrink: 0,
+        backgroundColor: 'var(--color-lumen-panel)',
+        borderLeft: '1px solid var(--color-lumen-border)',
+      }}
+    >
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <Histogram />
 
       {/* ─── 0. MÁSCARAS ───────────────────────────────────────────── */}
       <PanelAccordion
         title={`Máscaras (${settings.masks?.length || 0})`}
         isOpen={openSections.masks}
         onToggle={() => toggleSection('masks')}
+        helpKey="mask_panel"
       >
         <MaskPanel
           activeMaskIndex={maskIdx}
@@ -98,6 +89,7 @@ export function DevelopPanels({
         title="Básico"
         isOpen={openSections.basic}
         onToggle={() => toggleSection('basic')}
+        helpKey="exposure"
       >
 
         {/* White Balance */}
@@ -115,6 +107,7 @@ export function DevelopPanels({
             onChange={(v) => updateSetting('temperature', v)}
             onReset={() => updateSetting('temperature', 0, 'Reset Temp')}
             gradient="linear-gradient(to right, #38bdf8, #71717a, #f59e0b)"
+            helpKey="temperature"
           />
           <SliderRow
             label="Matiz"
@@ -126,6 +119,7 @@ export function DevelopPanels({
             onChange={(v) => updateSetting('tint', v)}
             onReset={() => updateSetting('tint', 0, 'Reset Matiz')}
             gradient="linear-gradient(to right, #22c55e, #71717a, #ec4899)"
+            helpKey="tint"
           />
         </div>
 
@@ -143,6 +137,7 @@ export function DevelopPanels({
             displayValue={(settings.exposure > 0 ? '+' : '') + settings.exposure.toFixed(2)}
             onChange={(v) => updateSetting('exposure', v)}
             onReset={() => updateSetting('exposure', 0, 'Reset Exposición')}
+            helpKey="exposure"
           />
           <SliderRow
             label="Contraste"
@@ -153,6 +148,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.contrast * 100)}
             onChange={(v) => updateSetting('contrast', v)}
             onReset={() => updateSetting('contrast', 0, 'Reset Contraste')}
+            helpKey="contrast"
           />
           <SliderRow
             label="Altas luces"
@@ -163,6 +159,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.highlights * 100)}
             onChange={(v) => updateSetting('highlights', v)}
             onReset={() => updateSetting('highlights', 0, 'Reset Altas luces')}
+            helpKey="highlights"
           />
           <SliderRow
             label="Sombras"
@@ -173,6 +170,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.shadows * 100)}
             onChange={(v) => updateSetting('shadows', v)}
             onReset={() => updateSetting('shadows', 0, 'Reset Sombras')}
+            helpKey="shadows"
           />
           <SliderRow
             label="Blancos"
@@ -183,6 +181,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.whites * 100)}
             onChange={(v) => updateSetting('whites', v)}
             onReset={() => updateSetting('whites', 0, 'Reset Blancos')}
+            helpKey="whites"
           />
           <SliderRow
             label="Negros"
@@ -193,6 +192,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.blacks * 100)}
             onChange={(v) => updateSetting('blacks', v)}
             onReset={() => updateSetting('blacks', 0, 'Reset Negros')}
+            helpKey="blacks"
           />
         </div>
 
@@ -210,6 +210,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.texture * 100)}
             onChange={(v) => updateSetting('texture', v)}
             onReset={() => updateSetting('texture', 0, 'Reset Textura')}
+            helpKey="texture"
           />
           <SliderRow
             label="Claridad"
@@ -220,6 +221,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.clarity * 100)}
             onChange={(v) => updateSetting('clarity', v)}
             onReset={() => updateSetting('clarity', 0, 'Reset Claridad')}
+            helpKey="clarity"
           />
           <SliderRow
             label="Borrar neblina"
@@ -230,6 +232,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.dehaze * 100)}
             onChange={(v) => updateSetting('dehaze', v)}
             onReset={() => updateSetting('dehaze', 0, 'Reset Borrar neblina')}
+            helpKey="dehaze"
           />
           <SliderRow
             label="Intensidad"
@@ -240,6 +243,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.vibrance * 100)}
             onChange={(v) => updateSetting('vibrance', v)}
             onReset={() => updateSetting('vibrance', 0, 'Reset Intensidad')}
+            helpKey="vibrance"
           />
           <SliderRow
             label="Saturación"
@@ -250,6 +254,7 @@ export function DevelopPanels({
             displayValue={Math.round(settings.saturation * 100)}
             onChange={(v) => updateSetting('saturation', v)}
             onReset={() => updateSetting('saturation', 0, 'Reset Saturación')}
+            helpKey="saturation"
           />
         </div>
       </PanelAccordion>
@@ -259,6 +264,7 @@ export function DevelopPanels({
         title="Curva de tonos"
         isOpen={openSections.curve}
         onToggle={() => toggleSection('curve')}
+        helpKey="tone_curve"
       >
         <ToneCurveEditor />
       </PanelAccordion>
@@ -268,6 +274,7 @@ export function DevelopPanels({
         title="HSL / Color"
         isOpen={openSections.hsl}
         onToggle={() => toggleSection('hsl')}
+        helpKey="hsl_panel"
       >
         <HslEditor />
       </PanelAccordion>
@@ -277,6 +284,7 @@ export function DevelopPanels({
         title="Gradación de color"
         isOpen={openSections.colorGrading}
         onToggle={() => toggleSection('colorGrading')}
+        helpKey="color_grading"
       >
         <ColorGradingEditor />
       </PanelAccordion>
@@ -286,6 +294,7 @@ export function DevelopPanels({
         title="Detalle"
         isOpen={openSections.detail}
         onToggle={() => toggleSection('detail')}
+        helpKey="sharpening"
       >
         <DetailEditor />
       </PanelAccordion>
@@ -295,6 +304,7 @@ export function DevelopPanels({
         title="Correcciones de lente"
         isOpen={openSections.lens}
         onToggle={() => toggleSection('lens')}
+        helpKey="lens_corrections"
       >
         <LensCorrectionsEditor />
       </PanelAccordion>
@@ -304,6 +314,7 @@ export function DevelopPanels({
         title="Transformar"
         isOpen={openSections.transform}
         onToggle={() => toggleSection('transform')}
+        helpKey="tool_crop"
       >
         <TransformEditor />
       </PanelAccordion>
@@ -313,6 +324,7 @@ export function DevelopPanels({
         title="Efectos"
         isOpen={openSections.effects}
         onToggle={() => toggleSection('effects')}
+        helpKey="vignette"
       >
         <div style={{ fontSize: '11px', color: '#71717a', marginBottom: '6px', fontWeight: 600 }}>
           VIÑETA POST-RECORTE
@@ -531,6 +543,8 @@ export function DevelopPanels({
           </div>
         </div>
       </PanelAccordion>
+      </div>
+      <DevelopHelpBar />
     </div>
   );
 }
@@ -725,14 +739,18 @@ function PanelAccordion({
   isOpen,
   onToggle,
   children,
+  helpKey,
 }: {
   title: string;
   isOpen: boolean;
   onToggle: () => void;
   children: React.ReactNode;
+  helpKey?: string;
 }) {
+  const openHelp = useHelpStore((s) => s.openPanelHelp);
+
   return (
-    <div style={{ borderBottom: '1px solid #27272a' }}>
+    <div style={{ borderBottom: '1px solid var(--color-lumen-border)' }}>
       <div
         onClick={onToggle}
         style={{
@@ -740,16 +758,42 @@ function PanelAccordion({
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '8px 12px',
-          backgroundColor: '#18181b',
+          backgroundColor: 'var(--color-lumen-panel-header)',
           cursor: 'pointer',
           userSelect: 'none',
           fontSize: '12px',
           fontWeight: 600,
-          color: '#e4e4e7',
+          color: 'var(--color-lumen-text)',
         }}
       >
-        <span>{title}</span>
-        <span style={{ fontSize: '10px', color: '#71717a' }}>{isOpen ? '▼' : '▶'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>{title}</span>
+          {helpKey && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openHelp(helpKey);
+              }}
+              title="Ayuda sobre este panel y control (?)"
+              style={{
+                background: 'var(--color-lumen-surface)',
+                border: '1px solid var(--color-lumen-border)',
+                borderRadius: '50%',
+                width: '16px',
+                height: '16px',
+                fontSize: '10px',
+                lineHeight: '14px',
+                textAlign: 'center',
+                color: 'var(--color-lumen-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              ?
+            </button>
+          )}
+        </div>
+        <span style={{ fontSize: '10px', color: 'var(--color-lumen-muted)' }}>{isOpen ? '▼' : '▶'}</span>
       </div>
       {isOpen && <div style={{ padding: '10px 12px' }}>{children}</div>}
     </div>
@@ -767,6 +811,7 @@ function SliderRow({
   onChange,
   onReset,
   gradient,
+  helpKey,
 }: {
   label: string;
   min: number;
@@ -777,65 +822,21 @@ function SliderRow({
   onChange: (v: number) => void;
   onReset: () => void;
   gradient?: string;
+  helpKey?: string;
 }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '6px',
-        fontSize: '11px',
-      }}
-    >
-      <span
-        onDoubleClick={onReset}
-        title="Doble clic para restablecer"
-        style={{
-          width: '74px',
-          color: '#a1a1aa',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
-        {label}
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onPointerDown={() => {
-          useDevelopStore.getState().setIsDraggingSlider(true);
-        }}
-        onPointerUp={() => {
-          useDevelopStore.getState().setIsDraggingSlider(false);
-        }}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        style={{
-          flex: 1,
-          margin: '0 8px',
-          accentColor: '#3b82f6',
-          cursor: 'ew-resize',
-          height: '4px',
-          background: gradient || '#27272a',
-          borderRadius: '2px',
-        }}
-      />
-
-      <span
-        style={{
-          width: '38px',
-          textAlign: 'right',
-          fontVariantNumeric: 'tabular-nums',
-          color: value !== 0 ? '#60a5fa' : '#71717a',
-          fontWeight: value !== 0 ? 500 : 400,
-        }}
-      >
-        {displayValue}
-      </span>
-    </div>
+    <AccessibleSlider
+      label={label}
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      displayValue={displayValue}
+      onChange={onChange}
+      onReset={onReset}
+      gradient={gradient}
+      helpId={helpKey}
+    />
   );
 }
 
