@@ -40,7 +40,7 @@ Este documento clasifica con rigor técnico el estado funcional de cada módulo 
 | Modos Antes / Después (4 modos) | **REAL** | Vista simple, split vertical interactivo, split horizontal y lado a lado. |
 | Prueba en pantalla (Soft Proofing) | **PARCIAL** | Simulación de contraste y compresión de gamut en lienzo. *Falta*: enlace con LittleCMS para perfiles de papel e impresora específicos. |
 | **FASE 7: MÓDULOS ADICIONALES Y SERVICIOS** | | |
-| Módulo Mapa (GPS) | **REAL** | Pines de fotos, cálculo Mercator, geocodificación y campo para clave de API de teselas cartográficas en Ajustes. |
+| Módulo Mapa (GPS) | **PARCIAL** | Pines de fotos, cálculo Mercator y geocodificación. Sin clave de proveedor de mapas (API key de Mapbox/OSM) solo se muestra la retícula de coordenadas/grilla. |
 | Módulo Libro (Photobook) | **REAL** | Diseñador interactivo y exportador PDF nativo con `printpdf` a disco (`test_pdf_photobook_and_web_gallery_export`). |
 | Módulo Presentación (Slideshow) | **REAL** | Reproductor con temporizador, transiciones (Disolución, Ken Burns dinámico), superposición de EXIF y pantalla completa. |
 | Módulo Impresión | **PARCIAL** | Maquetación a 300 ppp / 240 ppp con llamada nativa a `window.print()`. |
@@ -50,23 +50,37 @@ Este documento clasifica con rigor técnico el estado funcional de cada módulo 
 
 ---
 
-## Resultados de Rendimiento con Datos Reales (Point 9)
+## Resultados de Rendimiento en Release con Datos Reales de 24 MP
 
-Ejecución oficial mediante `cargo test test_benchmark_200_jpegs_and_24mp_export -- --nocapture`:
+### 1. Backend Rust (cargo test --release --test catalog_database_tests test_benchmark_200_jpegs_and_24mp_export -- --nocapture):
 
 ```
 =======================================================
-  LUMEN REAL BENCHMARK RESULTS (cargo test -- --nocapture)
+  LUMEN REAL BENCHMARK RESULTS (cargo test --release --nocapture)
 =======================================================
-1. Creación de 200 JPEGs de prueba (800x600):  37.20 s
-2. Escaneo, hash SHA-256 y metadata (200 fotos): 216.68 ms
-   -> Velocidad de escaneo:                     923.0 fotos/segundo
-3. Inserción SQLite + Triggers FTS5 (200 fotos): 26.41 ms
-   -> Tiempo por foto en catálogo:              0.13 ms/foto
-4. Generación y guardado de 200 miniaturas:    37.61 s
-   -> Tiempo por miniatura (256px Lanczos):     188.07 ms/miniatura (5.3 thumbs/s)
-5. Exportación teselada foto 24 MP (6000x4000): 4.98 s
-   -> Tamaño JPEG final (con ICC y EXIF):       0.63 MB
-   -> Rendimiento de exportación 24 MP:         4.8 MPixels/s
+1. Creación de 200 JPEGs REALES 24 MP (6000x4000): 72.13 s
+2. Escaneo, hash SHA-256 y metadata (200 fotos 24 MP): 358.97 ms
+   -> Velocidad de escaneo:                     557.1 fotos/segundo
+3. Inserción SQLite + Triggers FTS5 (200 fotos): 12.97 ms
+   -> Tiempo por foto en catálogo:              0.06 ms/foto
+4. Generación paralela de 200 miniaturas (Rayon): 3.28 s
+   -> Tiempo medio por miniatura 24 MP:         16.42 ms/miniatura (60.9 thumbs/s) [< 30 ms]
+5. Exportación teselada Rust foto 24 MP con detalle: 668.50 ms
+   -> Tamaño JPEG final (con ICC y EXIF):       13.77 MB
+   -> Rendimiento de codificación Rust 24 MP:   35.9 MPixels/s
 =======================================================
 ```
+
+### 2. Frontend WebGL vs Codificación en Rust (Medidos por Separado):
+
+```
+=======================================================
+  MEDICIÓN SEPARADA RENDERIZADO WEBGL vs CODIFICACIÓN RUST (24 MP, 6000x4000)
+=======================================================
+1. Tiempo de renderizado WebGL por teselas (Frontend): 34.53 ms
+   -> Evaluado con performance.now() en bucle de 6 teselas con margen de halo
+2. Tiempo de codificación y guardado JPEG (Rust):      668.50 ms
+   -> Evaluado en Rust con std::time::Instant (13.77 MB con perfil ICC sRGB y EXIF)
+=======================================================
+```
+
