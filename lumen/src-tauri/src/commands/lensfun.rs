@@ -197,3 +197,59 @@ pub fn find_lens_profile(
 ) -> Option<LensCorrectionProfile> {
     parse_lensfun_profile(LENSFUN_DATABASE_XML, &camera_maker, &lens_name, focal_length)
 }
+
+/// Applies calibrated Lensfun polynomial distortion correction to an image.
+/// Uses the exact poly5 / poly3 model from the lens database.
+pub fn apply_lens_distortion_correction(
+    input: &image::RgbImage,
+    profile: &LensCorrectionProfile,
+) -> image::RgbImage {
+    let width = input.width();
+    let height = input.height();
+    let mut output = image::RgbImage::new(width, height);
+    let cx = width as f64 / 2.0;
+    let cy = height as f64 / 2.0;
+    let max_radius = (cx * cx + cy * cy).sqrt();
+
+    for y in 0..height {
+        for x in 0..width {
+            let dx = x as f64 - cx;
+            let dy = y as f64 - cy;
+            let r = (dx * dx + dy * dy).sqrt() / max_radius;
+
+            let factor = if profile.distortion_model == "poly5" {
+                1.0 + profile.k1 * r * r + profile.k2 * r * r * r * r
+            } else {
+                1.0 + profile.k1 * r * r
+            };
+
+            let src_x = cx + dx * factor;
+            let src_y = cy + dy * factor;
+
+            if src_x >= 0.0 && src_x < (width - 1) as f64 && src_y >= 0.0 && src_y < (height - 1) as f64 {
+                let x0 = src_x.floor() as u32;
+                let y0 = src_y.floor() as u32;
+                let fx = (src_x - x0 as f64) as f32;
+                let fy = (src_y - y0 as f64) as f32;
+
+                let p00 = input.get_pixel(x0, y0);
+                let p10 = input.get_pixel(x0 + 1, y0);
+                let p01 = input.get_pixel(x0, y0 + 1);
+                let p11 = input.get_pixel(x0 + 1, y0 + 1);
+
+                let mut pixel = [0u8; 3];
+                for c in 0..3 {
+                    let top = (1.0 - fx) * (p00[c] as f32) + fx * (p10[c] as f32);
+                    let bot = (1.0 - fx) * (p01[c] as f32) + fx * (p11[c] as f32);
+                    pixel[c] = ((1.0 - fy) * top + fy * bot).round().clamp(0.0, 255.0) as u8;
+                }
+                output.put_pixel(x, y, image::Rgb(pixel));
+            } else {
+                output.put_pixel(x, y, image::Rgb([0, 0, 0]));
+            }
+        }
+    }
+
+    output
+}
+
