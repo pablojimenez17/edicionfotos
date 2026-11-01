@@ -51,7 +51,7 @@ export function Toolbar() {
           className="toolbar__btn"
           onClick={() => setExportOpen(true)}
           title="Exportar fotos (Ctrl+Shift+E)"
-          style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#93c5fd' }}
+          style={{ backgroundColor: 'var(--color-lumen-surface)', borderColor: 'var(--color-lumen-border)', color: 'var(--color-lumen-text)' }}
         >
           📤 Exportar…
         </button>
@@ -61,9 +61,9 @@ export function Toolbar() {
           className="toolbar__btn"
           onClick={() => setTetherOpen(true)}
           title="Captura conectada de cámara (Tethered) — Próximamente"
-          style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa' }}
+          style={{ backgroundColor: 'var(--color-lumen-card)', borderColor: 'var(--color-lumen-border)', color: 'var(--color-lumen-muted)' }}
         >
-          📷 Conectar cámara <span style={{ fontSize: '9px', background: '#3f3f46', color: '#e4e4e7', padding: '1px 4px', borderRadius: '3px', marginLeft: '4px' }}>Próximamente</span>
+          📷 Conectar cámara <span style={{ fontSize: '9px', background: 'var(--color-lumen-surface)', border: '1px solid var(--color-lumen-border)', color: 'var(--color-lumen-muted)', padding: '1px 4px', borderRadius: '3px', marginLeft: '4px' }}>Próximamente</span>
         </button>
 
         <div className="toolbar__separator" />
@@ -118,17 +118,18 @@ function FtsSearchBar() {
     <div style={{ display: 'flex', alignItems: 'center', marginLeft: '6px' }}>
       <input
         type="text"
+        aria-label="Buscar fotos por nombre de archivo o palabra clave"
         value={searchQuery}
         onChange={(e) => handleSearch(e.target.value)}
         placeholder="🔍 Buscar archivos / etiquetas…"
         style={{
-          backgroundColor: '#18181b',
-          border: '1px solid #3f3f46',
-          borderRadius: '4px',
-          color: '#e4e4e7',
-          padding: '3px 8px',
+          backgroundColor: 'var(--color-lumen-bg-canvas)',
+          border: '1px solid var(--color-lumen-border)',
+          borderRadius: 'var(--radius-sm)',
+          color: 'var(--color-lumen-text)',
+          padding: '4px 8px',
           fontSize: '11px',
-          width: '180px',
+          width: '190px',
           outline: 'none',
         }}
       />
@@ -138,7 +139,7 @@ function FtsSearchBar() {
           style={{
             background: 'none',
             border: 'none',
-            color: '#a1a1aa',
+            color: 'var(--color-lumen-muted)',
             cursor: 'pointer',
             marginLeft: '-20px',
             fontSize: '11px',

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useCatalogStore } from '../../stores/catalog';
+import { useUiStore } from '../../stores/ui';
+import { useHelpStore } from '../../help/helpStore';
 import type { ColorLabel, Flag } from '../../types';
 
 export function MetadataPanel() {
@@ -86,21 +88,68 @@ export function MetadataPanel() {
     img.src = photo.thumbnailUrl;
   }, [photo]);
 
+  const rightPanelWidth = useUiStore((s) => s.rightPanelWidth);
+  const openHelp = useHelpStore((s) => s.openPanelHelp);
+
   if (!photo) {
     return (
-      <div className="side-panel side-panel--right">
-        <div className="panel-header">Metadatos</div>
-        <div style={{ padding: '16px', color: '#71717a', fontSize: '12px', textAlign: 'center' }}>
-          Selecciona una foto para ver sus metadatos
+      <div className="panel panel--right" style={{ width: `${rightPanelWidth}px`, flexShrink: 0 }}>
+        <div className="panel__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Metadatos</span>
+          <button
+            type="button"
+            onClick={() => openHelp('panel_metadata')}
+            title="Ayuda sobre metadatos (?)"
+            style={{
+              background: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: '50%',
+              width: '15px',
+              height: '15px',
+              fontSize: '10px',
+              lineHeight: '13px',
+              textAlign: 'center',
+              color: 'var(--color-lumen-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            ?
+          </button>
+        </div>
+        <div style={{ padding: '24px 16px', color: 'var(--color-lumen-muted)', fontSize: '12px', textAlign: 'center', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.5 }}>ℹ️</div>
+          <div style={{ fontWeight: 500, color: 'var(--color-lumen-text-dim)', marginBottom: '4px' }}>Sin foto seleccionada</div>
+          Selecciona una foto en la cuadrícula para ver y editar sus metadatos EXIF, puntuación y etiquetas.
         </div>
       </div>
     );
   }
 
   return (
-    <div className="side-panel side-panel--right" style={{ width: '280px', overflowY: 'auto' }}>
+    <div className="panel panel--right" style={{ width: `${rightPanelWidth}px`, overflowY: 'auto', flexShrink: 0 }}>
       {/* Histogram */}
-      <div className="panel-header">Histograma</div>
+      <div className="panel__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Histograma</span>
+        <button
+          type="button"
+          onClick={() => openHelp('panel_metadata')}
+          title="Ayuda sobre metadatos e histograma (?)"
+          style={{
+            background: 'var(--color-lumen-surface)',
+            border: '1px solid var(--color-lumen-border)',
+            borderRadius: '50%',
+            width: '15px',
+            height: '15px',
+            fontSize: '10px',
+            lineHeight: '13px',
+            textAlign: 'center',
+            color: 'var(--color-lumen-muted)',
+            cursor: 'pointer',
+          }}
+        >
+          ?
+        </button>
+      </div>
       <div style={{ padding: '8px 12px' }}>
         <canvas
           ref={canvasRef}
@@ -123,7 +172,7 @@ export function MetadataPanel() {
       </div>
 
       {/* Quick classification: Rating & Flags */}
-      <div className="panel-header" style={{ marginTop: '8px' }}>
+      <div className="panel__header" style={{ marginTop: '8px' }}>
         Clasificación
       </div>
       <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -214,7 +263,7 @@ export function MetadataPanel() {
       </div>
 
       {/* EXIF Information */}
-      <div className="panel-header" style={{ marginTop: '8px' }}>
+      <div className="panel__header" style={{ marginTop: '8px' }}>
         Información del archivo
       </div>
       <div style={{ padding: '8px 12px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '6px' }}>

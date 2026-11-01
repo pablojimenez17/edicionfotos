@@ -1,0 +1,102 @@
+/*──────────────────────────────────────────────────────────────────────
+  Lumen Design Tokens & System Variables
+  Centralized design token system for neutral dark and light themes
+──────────────────────────────────────────────────────────────────────*/
+
+:root {
+  /* Color Tokens - Neutral Dark Theme (Default)
+     No color tinting: pure neutral grayscale to prevent color perception bias */
+  --color-lumen-bg-canvas:  #101010; /* Deepest background (behind canvas/views) */
+  --color-lumen-bg:         #181818; /* Standard app background */
+  --color-lumen-bg-deep:    #141414; /* Navigation & header bar */
+  --color-lumen-surface:    #202020; /* Toolbars & active states */
+  --color-lumen-panel:      #242424; /* Left & right sidebar panels */
+  --color-lumen-panel-header: #282828; /* Panel headers */
+  --color-lumen-card:       #1e1e1e; /* Cards & popovers */
+  --color-lumen-border:     #333333; /* Standard border */
+  --color-lumen-border-subtle: #282828; /* Very soft border */
+  --color-lumen-border-focus: #555555; /* Focused border */
+
+  /* Text & Content Tokens */
+  --color-lumen-text:       #e6e6e6; /* High-contrast primary text */
+  --color-lumen-text-dim:   #b0b0b0; /* Secondary text */
+  --color-lumen-muted:      #787878; /* Muted captions, icons, shortcuts */
+  --color-lumen-disabled:   #505050; /* Disabled controls */
+
+  /* Accent & Status Tokens (Only for active selection & status) */
+  --color-lumen-accent:     #ff7a2f; /* Lumen Photography Amber Accent */
+  --color-lumen-accent-h:   #ff9050; /* Accent hover */
+  --color-lumen-accent-subtle: rgba(255, 122, 47, 0.15); /* Accent highlight bg */
+  --color-lumen-selection:  #2563eb; /* Blue selection rectangle/tags */
+  --color-lumen-danger:     #ef4444; /* Error / reject */
+  --color-lumen-success:    #22c55e; /* Success / pick */
+  --color-lumen-warning:    #f59e0b; /* Warnings */
+  --color-lumen-info:       #3b82f6; /* Informational hints */
+
+  /* Rating & Color Labels */
+  --color-label-red:        #ef4444;
+  --color-label-yellow:     #eab308;
+  --color-label-green:      #22c55e;
+  --color-label-blue:       #3b82f6;
+  --color-label-purple:     #a855f7;
+
+  /* Typography Stack */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-tabular: tabular-nums;
+
+  /* Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Border Radii */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* Elevation & Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.7);
+  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.85);
+
+  /* Animation & Transitions */
+  --transition-fast: 100ms ease;
+  --transition-normal: 150ms ease;
+  --transition-slow: 250ms ease;
+
+  /* Focus & Accessibility */
+  --focus-ring: 0 0 0 2px var(--color-lumen-accent);
+  --focus-ring-offset: 0 0 0 1px var(--color-lumen-bg);
+}
+
+/* Optional Light Theme */
+[data-theme="light"] {
+  --color-lumen-bg-canvas:  #e5e5e5;
+  --color-lumen-bg:         #f0f0f0;
+  --color-lumen-bg-deep:    #e0e0e0;
+  --color-lumen-surface:    #f8f8f8;
+  --color-lumen-panel:      #ebebeb;
+  --color-lumen-panel-header: #e0e0e0;
+  --color-lumen-card:       #ffffff;
+  --color-lumen-border:     #cccccc;
+  --color-lumen-border-subtle: #dcdcdc;
+  --color-lumen-border-focus: #999999;
+
+  --color-lumen-text:       #1a1a1a;
+  --color-lumen-text-dim:   #4a4a4a;
+  --color-lumen-muted:      #707070;
+  --color-lumen-disabled:   #a0a0a0;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.2);
+  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.25);
+}

@@ -61,35 +61,44 @@ export function KeywordsPanel() {
     await loadData();
   };
 
+  const [isOpen, setIsOpen] = useState(true);
+
   return (
-    <div style={{ padding: '8px 12px', borderBottom: '1px solid #27272a' }}>
+    <div style={{ borderBottom: '1px solid var(--color-lumen-border)' }}>
       <div
+        className="panel__header"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          fontSize: '11px',
-          fontWeight: 600,
-          color: '#a1a1aa',
-          marginBottom: '6px',
+          cursor: 'pointer',
+          userSelect: 'none',
         }}
+        onClick={() => setIsOpen(!isOpen)}
       >
-        <span>PALABRAS CLAVE</span>
+        <span>{isOpen ? '▾' : '▸'} PALABRAS CLAVE</span>
         {activeKeywordId !== null && (
           <button
-            onClick={() => setActiveKeywordId(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveKeywordId(null);
+            }}
             style={{
               background: 'none',
               border: 'none',
-              color: '#3b82f6',
+              color: 'var(--color-lumen-accent)',
               cursor: 'pointer',
               fontSize: '10px',
+              fontWeight: 500,
             }}
           >
             Limpiar filtro
           </button>
         )}
       </div>
+
+      {isOpen && (
+        <div style={{ padding: '8px 12px' }}>
 
       {/* Creation form */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
@@ -143,7 +152,9 @@ export function KeywordsPanel() {
             />
           ))
         )}
-      </div>
+        </div>
+        </div>
+      )}
     </div>
   );
 }

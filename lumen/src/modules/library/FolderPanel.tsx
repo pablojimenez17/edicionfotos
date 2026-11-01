@@ -1,11 +1,18 @@
+import { useState } from 'react';
 import { useCatalogStore } from '../../stores/catalog';
+import { useUiStore } from '../../stores/ui';
+import { useHelpStore } from '../../help/helpStore';
 import { CollectionsPanel } from './CollectionsPanel';
 import { KeywordsPanel } from './KeywordsPanel';
 import { PublishServicesPanel } from './PublishServicesPanel';
 import type { Folder } from '../../types';
 
-
 export function FolderPanel() {
+  const [foldersOpen, setFoldersOpen] = useState(true);
+  const [publishOpen, setPublishOpen] = useState(true);
+  const leftPanelWidth = useUiStore((s) => s.leftPanelWidth);
+  const openHelp = useHelpStore((s) => s.openPanelHelp);
+
   const rootFolders = useCatalogStore((s) => s.rootFolders);
   const folders = useCatalogStore((s) => s.folders);
   const photos = useCatalogStore((s) => s.photos);
@@ -22,49 +29,91 @@ export function FolderPanel() {
   const totalPhotos = photos.length;
 
   return (
-    <div className="panel">
-      <div className="panel__header">Carpetas</div>
-
-      {/* All Photos */}
+    <div className="panel" style={{ width: `${leftPanelWidth}px`, flexShrink: 0 }}>
+      {/* Carpetas Header */}
       <div
-        className={`folder-item ${activeFolderId === null ? 'folder-item--active' : ''}`}
-        onClick={() => setActiveFolderId(null)}
+        className="panel__header"
+        onClick={() => setFoldersOpen(!foldersOpen)}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}
       >
-        <span className="folder-item__icon">📸</span>
-        <span>Todas las fotos</span>
-        <span className="folder-item__count">{totalPhotos}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>{foldersOpen ? '▾' : '▸'} CARPETAS</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openHelp('panel_folders');
+            }}
+            title="Ayuda sobre el panel de carpetas (?)"
+            style={{
+              background: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              borderRadius: '50%',
+              width: '15px',
+              height: '15px',
+              fontSize: '10px',
+              lineHeight: '13px',
+              textAlign: 'center',
+              color: 'var(--color-lumen-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            ?
+          </button>
+        </div>
       </div>
 
-      {/* Root folders */}
-      {rootFolders.map((rf) => {
-        const rfFolders = folders.filter((f) => f.root_id === rf.id);
-        return (
-          <div key={rf.id}>
-            <div
-              style={{
-                padding: '6px 12px 2px',
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--color-lumen-muted)',
-                letterSpacing: '0.5px',
-                marginTop: 8,
-              }}
-            >
-              {rf.is_missing ? '⚠️ ' : '💾 '}
-              {rf.name}
-            </div>
-            {rfFolders.map((folder) => (
-              <FolderItem
-                key={folder.id}
-                folder={folder}
-                isActive={activeFolderId === folder.id}
-                photoCount={countMap.get(folder.id) || 0}
-                onClick={() => setActiveFolderId(folder.id)}
-              />
-            ))}
+      {foldersOpen && (
+        <div style={{ paddingBottom: '8px' }}>
+          {/* All Photos */}
+          <div
+            className={`folder-item ${activeFolderId === null ? 'folder-item--active' : ''}`}
+            onClick={() => setActiveFolderId(null)}
+          >
+            <span className="folder-item__icon">📸</span>
+            <span>Todas las fotos</span>
+            <span className="folder-item__count">{totalPhotos}</span>
           </div>
-        );
-      })}
+
+          {/* Root folders */}
+          {rootFolders.map((rf) => {
+            const rfFolders = folders.filter((f) => f.root_id === rf.id);
+            return (
+              <div key={rf.id}>
+                <div
+                  style={{
+                    padding: '8px 14px 4px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--color-lumen-muted)',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  {rf.is_missing ? '⚠️ ' : '💾 '}
+                  {rf.name}
+                </div>
+                {rfFolders.map((folder) => (
+                  <FolderItem
+                    key={folder.id}
+                    folder={folder}
+                    isActive={activeFolderId === folder.id}
+                    photoCount={countMap.get(folder.id) || 0}
+                    onClick={() => setActiveFolderId(folder.id)}
+                  />
+                ))}
+              </div>
+            );
+          })}
+
+          {rootFolders.length === 0 && (
+            <div style={{ padding: '16px 14px', color: 'var(--color-lumen-muted)', fontSize: 12, lineHeight: 1.5 }}>
+              No hay carpetas importadas.
+              <br />
+              Usa el botón «Importar» para añadir fotos.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Collections section */}
       <CollectionsPanel />
@@ -73,27 +122,35 @@ export function FolderPanel() {
       <KeywordsPanel />
 
       {/* Publish Services section */}
-      <div style={{ marginTop: '16px', borderTop: '1px solid #27272a', paddingTop: '10px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-lumen-muted)', padding: '4px 12px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>SERVICIOS DE PUBLICACIÓN</span>
-          <span style={{ fontSize: '9px', background: '#3f3f46', color: '#e4e4e7', padding: '1px 5px', borderRadius: '3px' }}>Próximamente</span>
+      <div style={{ marginTop: '12px', borderTop: '1px solid var(--color-lumen-border)' }}>
+        <div
+          className="panel__header"
+          onClick={() => setPublishOpen(!publishOpen)}
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}
+        >
+          <span>{publishOpen ? '▾' : '▸'} SERVICIOS DE PUBLICACIÓN</span>
+          <span
+            style={{
+              fontSize: '9px',
+              background: 'var(--color-lumen-surface)',
+              border: '1px solid var(--color-lumen-border)',
+              color: 'var(--color-lumen-muted)',
+              padding: '1px 5px',
+              borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            Próximamente
+          </span>
         </div>
-        <div style={{ padding: '0 8px' }}>
-          <PublishServicesPanel />
-        </div>
+        {publishOpen && (
+          <div style={{ padding: '10px 12px' }}>
+            <PublishServicesPanel />
+          </div>
+        )}
       </div>
-
-      {rootFolders.length === 0 && (
-        <div style={{ padding: '16px 12px', color: 'var(--color-lumen-muted)', fontSize: 12 }}>
-          No hay carpetas importadas.
-          <br />
-          Usa el botón «Importar» para añadir fotos.
-        </div>
-      )}
     </div>
   );
 }
-
 
 function FolderItem({
   folder,
@@ -112,7 +169,7 @@ function FolderItem({
     <div
       className={`folder-item ${isActive ? 'folder-item--active' : ''}`}
       onClick={onClick}
-      style={{ paddingLeft: 12 + depth * 16 }}
+      style={{ paddingLeft: 14 + depth * 14 }}
     >
       <span className="folder-item__icon">📁</span>
       <span>{folder.name}</span>

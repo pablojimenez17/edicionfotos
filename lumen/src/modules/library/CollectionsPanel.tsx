@@ -123,42 +123,49 @@ export function CollectionsPanel() {
     }
   };
 
+  const [isOpen, setIsOpen] = useState(true);
+
   return (
-    <div style={{ padding: '8px 12px', borderBottom: '1px solid #27272a' }}>
+    <div style={{ borderBottom: '1px solid var(--color-lumen-border)' }}>
       <div
+        className="panel__header"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          fontSize: '11px',
-          fontWeight: 600,
-          color: '#a1a1aa',
-          marginBottom: '6px',
+          cursor: 'pointer',
+          userSelect: 'none',
         }}
+        onClick={() => setIsOpen(!isOpen)}
       >
-        <span>COLECCIONES</span>
-        <div style={{ display: 'flex', gap: '6px' }}>
+        <span>{isOpen ? '▾' : '▸'} COLECCIONES</span>
+        <div style={{ display: 'flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setShowSmartModal(true)}
             style={{
               background: 'none',
               border: 'none',
-              color: '#10b981',
+              color: 'var(--color-lumen-success)',
               cursor: 'pointer',
               fontSize: '10px',
+              fontWeight: 600,
             }}
             title="Nueva colección inteligente"
           >
             + Smart
           </button>
           <button
-            onClick={() => setShowInput((v) => !v)}
+            onClick={() => {
+              setIsOpen(true);
+              setShowInput((v) => !v);
+            }}
             style={{
               background: 'none',
               border: 'none',
-              color: '#3b82f6',
+              color: 'var(--color-lumen-accent)',
               cursor: 'pointer',
-              fontSize: '12px',
+              fontSize: '13px',
+              fontWeight: 600,
             }}
             title="Crear nueva colección manual"
           >
@@ -166,6 +173,9 @@ export function CollectionsPanel() {
           </button>
         </div>
       </div>
+
+      {isOpen && (
+        <div style={{ padding: '8px 12px' }}>
 
       {showInput && (
         <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
@@ -337,7 +347,9 @@ export function CollectionsPanel() {
             </div>
           );
         })}
-      </div>
+        </div>
+        </div>
+      )}
 
       {/* Modal: Crear Colección Inteligente */}
       {showSmartModal && (

@@ -50,25 +50,26 @@ export function FilterBar() {
         alignItems: 'center',
         gap: '12px',
         padding: '6px 14px',
-        backgroundColor: '#18181b',
-        borderBottom: '1px solid #27272a',
+        backgroundColor: 'var(--color-lumen-bg-deep)',
+        borderBottom: '1px solid var(--color-lumen-border)',
         fontSize: '11px',
-        color: '#a1a1aa',
+        color: 'var(--color-lumen-text-dim)',
       }}
     >
-      <span style={{ fontWeight: 600, color: '#e4e4e7' }}>Filtros de metadatos:</span>
+      <span style={{ fontWeight: 600, color: 'var(--color-lumen-text)' }}>Filtros de metadatos:</span>
 
       {/* Camera filter */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <span>Cámara:</span>
         <select
+          aria-label="Filtrar por modelo de cámara"
           value={filterCamera || ''}
           onChange={(e) => setFilterCamera(e.target.value || null)}
           style={{
-            backgroundColor: '#27272a',
-            border: '1px solid #3f3f46',
-            borderRadius: '3px',
-            color: '#fff',
+            backgroundColor: 'var(--color-lumen-surface)',
+            border: '1px solid var(--color-lumen-border)',
+            borderRadius: 'var(--radius-xs)',
+            color: 'var(--color-lumen-text)',
             fontSize: '11px',
             padding: '2px 6px',
             outline: 'none',
@@ -87,13 +88,14 @@ export function FilterBar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <span>Objetivo:</span>
         <select
+          aria-label="Filtrar por objetivo o lente"
           value={filterLens || ''}
           onChange={(e) => setFilterLens(e.target.value || null)}
           style={{
-            backgroundColor: '#27272a',
-            border: '1px solid #3f3f46',
-            borderRadius: '3px',
-            color: '#fff',
+            backgroundColor: 'var(--color-lumen-surface)',
+            border: '1px solid var(--color-lumen-border)',
+            borderRadius: 'var(--radius-xs)',
+            color: 'var(--color-lumen-text)',
             fontSize: '11px',
             padding: '2px 6px',
             outline: 'none',
@@ -112,13 +114,14 @@ export function FilterBar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <span>Fecha:</span>
         <select
+          aria-label="Filtrar por fecha de captura"
           value={filterDate || ''}
           onChange={(e) => setFilterDate(e.target.value || null)}
           style={{
-            backgroundColor: '#27272a',
-            border: '1px solid #3f3f46',
-            borderRadius: '3px',
-            color: '#fff',
+            backgroundColor: 'var(--color-lumen-surface)',
+            border: '1px solid var(--color-lumen-border)',
+            borderRadius: 'var(--radius-xs)',
+            color: 'var(--color-lumen-text)',
             fontSize: '11px',
             padding: '2px 6px',
             outline: 'none',

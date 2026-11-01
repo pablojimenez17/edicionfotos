@@ -7,16 +7,26 @@ import { SurveyView } from './SurveyView';
 import { FilterBar } from './FilterBar';
 import { MetadataPanel } from './MetadataPanel';
 import { Filmstrip } from '../../components/Filmstrip';
+import { PanelResizer } from '../../components/PanelResizer';
 
 export function LibraryModule() {
   const leftPanelOpen = useUiStore((s) => s.leftPanelOpen);
   const rightPanelOpen = useUiStore((s) => s.rightPanelOpen);
+  const leftPanelWidth = useUiStore((s) => s.leftPanelWidth);
+  const rightPanelWidth = useUiStore((s) => s.rightPanelWidth);
+  const setLeftPanelWidth = useUiStore((s) => s.setLeftPanelWidth);
+  const setRightPanelWidth = useUiStore((s) => s.setRightPanelWidth);
   const libraryView = useUiStore((s) => s.libraryView);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {leftPanelOpen && <FolderPanel />}
+        {leftPanelOpen && (
+          <>
+            <FolderPanel />
+            <PanelResizer side="left" currentWidth={leftPanelWidth} onResize={setLeftPanelWidth} />
+          </>
+        )}
         <div className="content-area" style={{ display: 'flex', flexDirection: 'column', flex: 1, position: 'relative', overflow: 'hidden' }}>
           {libraryView === 'grid' && <FilterBar />}
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
@@ -26,7 +36,12 @@ export function LibraryModule() {
             {libraryView === 'survey' && <SurveyView />}
           </div>
         </div>
-        {rightPanelOpen && <MetadataPanel />}
+        {rightPanelOpen && (
+          <>
+            <PanelResizer side="right" currentWidth={rightPanelWidth} onResize={setRightPanelWidth} />
+            <MetadataPanel />
+          </>
+        )}
       </div>
       {(libraryView === 'loupe' || libraryView === 'compare' || libraryView === 'survey') && <Filmstrip />}
     </div>
