@@ -654,12 +654,18 @@ fn test_lensfun_real_lens_pixel_displacement() {
 
 #[test]
 fn test_develop_real_raw_camera_pipeline() {
-    use lumen_lib::commands::raw::develop_raw_file_to_image;
+    use lumen_lib::commands::raw::{develop_raw_file_to_image, find_embedded_jpeg};
     use std::fs;
 
     let nef_path = std::path::Path::new("tests/fixtures/sample_real.nef");
     assert!(nef_path.exists(), "Sample NEF file must exist in fixtures");
 
+    // 1. Extraer preview embebida original del RAW
+    let embedded_preview_bytes = find_embedded_jpeg(nef_path)
+        .expect("Must extract embedded JPEG preview from Nikon D90 NEF");
+    assert!(embedded_preview_bytes.len() > 10_000, "Embedded preview must be valid JPEG data");
+
+    // 2. Desarrollar RAW aplicando niveles negro/blanco, balance de blancos, matriz de color y curva de salida
     let developed = develop_raw_file_to_image(nef_path)
         .expect("Must successfully develop real Nikon D90 NEF file");
 
@@ -671,15 +677,24 @@ fn test_develop_real_raw_camera_pipeline() {
     println!("Center pixel RGB developed: {:?}", sample);
     assert!(sample[0] > 0 || sample[1] > 0 || sample[2] > 0);
 
-    // Save developed output to docs/ui/raw_developed_nikon_d90.jpg for visual comparison
-    let docs_ui = std::path::Path::new("../docs/ui");
-    if docs_ui.exists() {
-        let out_jpg = docs_ui.join("raw_developed_nikon_d90.jpg");
-        developed.save(&out_jpg).expect("Save developed JPEG to docs/ui");
-        let meta = fs::metadata(&out_jpg).expect("Metadata of developed JPEG");
-        println!("Saved real RAW developed JPEG to {:?} (size: {} bytes)", out_jpg, meta.len());
-        assert!(meta.len() > 100_000, "Developed JPEG must be a real high-res image > 100 KB");
-    }
+    // 3. Guardar en docs/raw-check/ ambos archivos para comparación visual
+    let raw_check_dir = std::path::Path::new("../docs/raw-check");
+    fs::create_dir_all(&raw_check_dir).expect("Create docs/raw-check directory");
+
+    let out_preview = raw_check_dir.join("preview_embebido.jpg");
+    fs::write(&out_preview, &embedded_preview_bytes).expect("Write embedded preview");
+
+    let out_developed = raw_check_dir.join("raw_desarrollado.jpg");
+    developed.save(&out_developed).expect("Save developed JPEG");
+
+    let meta_preview = fs::metadata(&out_preview).expect("Metadata preview");
+    let meta_developed = fs::metadata(&out_developed).expect("Metadata developed");
+
+    println!("Saved embedded preview to {:?} ({} bytes)", out_preview, meta_preview.len());
+    println!("Saved developed RAW to {:?} ({} bytes)", out_developed, meta_developed.len());
+
+    assert!(meta_preview.len() > 10_000, "Preview must be valid image file");
+    assert!(meta_developed.len() > 500_000, "Developed 12 MP image must weigh > 500 KB");
 }
 
 #[test]
