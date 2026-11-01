@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useUiStore } from '../../stores/ui';
 import { useCatalogStore } from '../../stores/catalog';
 import { useDevelopStore } from '../../stores/develop';
+import { isRawFormat } from '../../types';
 import { DevelopCanvas } from './DevelopCanvas';
 import { DevelopPanels } from './DevelopPanels';
 import { DevelopLeftPanel } from './DevelopLeftPanel';
@@ -18,6 +19,8 @@ export function DevelopModule() {
   const setRightPanelWidth = useUiStore((s) => s.setRightPanelWidth);
   const activePhotoId = useCatalogStore((s) => s.activePhotoId);
   const selectedPhotoIds = useCatalogStore((s) => s.selectedPhotoIds);
+  const photos = useCatalogStore((s) => s.photos);
+  const activePhoto = photos.find((p) => p.id === activePhotoId);
 
   const loadPhotoSettings = useDevelopStore((s) => s.loadPhotoSettings);
   const resetAll = useDevelopStore((s) => s.resetAll);
@@ -32,9 +35,10 @@ export function DevelopModule() {
   // Load photo settings whenever activePhotoId changes
   useEffect(() => {
     if (activePhotoId !== null) {
-      loadPhotoSettings(activePhotoId);
+      const isRaw = isRawFormat(activePhoto?.format || activePhoto?.filename);
+      loadPhotoSettings(activePhotoId, isRaw);
     }
-  }, [activePhotoId, loadPhotoSettings]);
+  }, [activePhotoId, activePhoto, loadPhotoSettings]);
 
   // Global Develop hotkeys: \ for Before/After, Ctrl+Shift+C/V for Copy/Paste, Ctrl+Shift+S for Sync
   useEffect(() => {

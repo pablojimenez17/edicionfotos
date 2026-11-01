@@ -20,6 +20,7 @@ interface HistoryEntry {
 interface DevelopState {
   // Current editing state
   activePhotoId: number | null;
+  isRawActive: boolean;
   settings: LumenSettings;
   originalSettings: LumenSettings;
 
@@ -36,7 +37,7 @@ interface DevelopState {
   clipboardSettings: Partial<LumenSettings> | null;
 
   // Actions
-  loadPhotoSettings: (photoId: number) => Promise<void>;
+  loadPhotoSettings: (photoId: number, isRaw?: boolean) => Promise<void>;
   updateSetting: <K extends keyof LumenSettings>(key: K, value: LumenSettings[K], label?: string) => void;
   updateSettings: (patch: Partial<LumenSettings>, label?: string) => void;
   resetAll: () => void;
@@ -57,6 +58,7 @@ interface DevelopState {
 
 export const useDevelopStore = create<DevelopState>((set, get) => ({
   activePhotoId: null,
+  isRawActive: false,
   settings: createDefaultSettings(),
   originalSettings: createDefaultSettings(),
   showBeforeAfter: false,
@@ -68,11 +70,13 @@ export const useDevelopStore = create<DevelopState>((set, get) => ({
 
   setShowBeforeAfter: (show) => set({ showBeforeAfter: show }),
 
-  loadPhotoSettings: async (photoId: number) => {
+  loadPhotoSettings: async (photoId: number, isRaw?: boolean) => {
     const saved = await getPhotoSettings(photoId);
-    const settings = saved ? { ...createDefaultSettings(), ...saved } : createDefaultSettings();
+    const defaults = createDefaultSettings(isRaw);
+    const settings = saved ? { ...defaults, ...saved } : defaults;
     set({
       activePhotoId: photoId,
+      isRawActive: !!isRaw,
       settings,
       originalSettings: JSON.parse(JSON.stringify(settings)),
       history: [{ label: 'Importar / Estado inicial', settings, timestamp: new Date().toLocaleTimeString() }],
@@ -134,7 +138,7 @@ export const useDevelopStore = create<DevelopState>((set, get) => ({
   },
 
   resetAll: () => {
-    const defaults = createDefaultSettings();
+    const defaults = createDefaultSettings(get().isRawActive);
     get().updateSettings(defaults, 'Restablecer todos los ajustes');
   },
 

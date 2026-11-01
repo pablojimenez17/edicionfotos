@@ -5,6 +5,12 @@
 export type Flag = 'none' | 'pick' | 'reject';
 export type ColorLabel = 'none' | 'red' | 'yellow' | 'green' | 'blue' | 'purple';
 
+export function isRawFormat(formatOrFilename?: string | null): boolean {
+  if (!formatOrFilename) return false;
+  const ext = formatOrFilename.split('.').pop()?.toLowerCase() || formatOrFilename.toLowerCase();
+  return ['cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2', 'cr3', 'pef', 'raw'].includes(ext);
+}
+
 export interface RootFolder {
   id: number;
   path: string;

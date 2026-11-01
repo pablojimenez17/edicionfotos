@@ -1224,6 +1224,9 @@ function CalibrationEditor() {
   };
 
   const profiles = [
+    'Cámara estándar',
+    'Neutro',
+    'Plano',
     'Adobe Color',
     'Adobe Standard',
     'Adobe Retrato',

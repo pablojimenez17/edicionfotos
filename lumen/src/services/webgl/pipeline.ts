@@ -577,12 +577,17 @@ export class DevelopPipeline {
 
     // Calibration
     const cal = settings.calibration || {
-      profile: 'Adobe Color',
+      profile: 'Cámara estándar',
       shadowTint: 0,
       redPrimary: { hue: 0, saturation: 0 },
       greenPrimary: { hue: 0, saturation: 0 },
       bluePrimary: { hue: 0, saturation: 0 },
     };
+    let profileMode = 0; // 0 = Cámara estándar / default
+    if (cal.profile === 'Neutro' || cal.profile === 'Adobe Neutro') profileMode = 1;
+    else if (cal.profile === 'Plano') profileMode = 2;
+    gl.uniform1i(gl.getUniformLocation(this.uberProgram, 'u_calibProfileMode'), profileMode);
+
     gl.uniform1f(gl.getUniformLocation(this.uberProgram, 'u_calibShadowTint'), (cal.shadowTint ?? 0) / 100);
     gl.uniform2f(gl.getUniformLocation(this.uberProgram, 'u_calibRed'), (cal.redPrimary?.hue ?? 0) / 100, (cal.redPrimary?.saturation ?? 0) / 100);
     gl.uniform2f(gl.getUniformLocation(this.uberProgram, 'u_calibGreen'), (cal.greenPrimary?.hue ?? 0) / 100, (cal.greenPrimary?.saturation ?? 0) / 100);

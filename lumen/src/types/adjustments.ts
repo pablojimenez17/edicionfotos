@@ -241,7 +241,7 @@ export interface LumenSettings {
   overlays: OverlayDefinition[];
 }
 
-export function createDefaultSettings(): LumenSettings {
+export function createDefaultSettings(isRaw?: boolean): LumenSettings {
   return {
     processVersion: 1,
     exposure: 0,
@@ -258,7 +258,7 @@ export function createDefaultSettings(): LumenSettings {
     vibrance: 0,
     saturation: 0,
     bw: 0,
-    sharpen: 0,
+    sharpen: isRaw ? 0.25 : 0,
     sharpenRadius: 1.0,
     sharpenDetail: 25,
     sharpenMasking: 0,
@@ -305,7 +305,7 @@ export function createDefaultSettings(): LumenSettings {
       aspect: 0,
     },
     calibration: {
-      profile: 'Adobe Color',
+      profile: isRaw ? 'Cámara estándar' : 'Adobe Color',
       shadowTint: 0,
       redPrimary: { hue: 0, saturation: 0 },
       greenPrimary: { hue: 0, saturation: 0 },

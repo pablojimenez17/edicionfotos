@@ -93,6 +93,7 @@ uniform float u_lensDistortion;
 uniform float u_lensVignette;
 
 // Calibration
+uniform int u_calibProfileMode; // 0 = Standard, 1 = Neutro, 2 = Plano
 uniform float u_calibShadowTint;
 uniform vec2 u_calibRed;   // hue, sat
 uniform vec2 u_calibGreen; // hue, sat
@@ -334,6 +335,12 @@ void main() {
   }
   if (u_calibBlue.x != 0.0 || u_calibBlue.y != 0.0) {
     rgb.b = clamp(rgb.b * (1.0 + u_calibBlue.y * 0.3) + u_calibBlue.x * 0.1 * rgb.r, 0.0, 1.0);
+  }
+
+  // 8D. Base Profile Calibration Mode
+  if (u_calibProfileMode == 2) {
+    // Plano: flatten contrast slightly for expanded dynamic range headroom
+    rgb = pow(clamp(rgb, 0.0, 1.0), vec3(0.95)) * 0.9 + 0.05;
   }
 
   // 9. Matte effect (lifts the blacks to give vintage faded film look)

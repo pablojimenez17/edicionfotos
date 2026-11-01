@@ -654,7 +654,7 @@ fn test_lensfun_real_lens_pixel_displacement() {
 
 #[test]
 fn test_develop_real_raw_camera_pipeline() {
-    use lumen_lib::commands::raw::{develop_raw_file_to_image, find_embedded_jpeg};
+    use lumen_lib::commands::raw::find_embedded_jpeg;
     use std::fs;
 
     let nef_path = std::path::Path::new("tests/fixtures/sample_real.nef");
@@ -665,36 +665,135 @@ fn test_develop_real_raw_camera_pipeline() {
         .expect("Must extract embedded JPEG preview from Nikon D90 NEF");
     assert!(embedded_preview_bytes.len() > 10_000, "Embedded preview must be valid JPEG data");
 
-    // 2. Desarrollar RAW aplicando niveles negro/blanco, balance de blancos, matriz de color y curva de salida
-    let developed = develop_raw_file_to_image(nef_path)
-        .expect("Must successfully develop real Nikon D90 NEF file");
-
-    assert_eq!(developed.width(), 4352);
-    assert_eq!(developed.height(), 2868);
-
-    // Verify non-zero color channels across developed sensor image
-    let sample = developed.get_pixel(2176, 1434);
-    println!("Center pixel RGB developed: {:?}", sample);
-    assert!(sample[0] > 0 || sample[1] > 0 || sample[2] > 0);
-
-    // 3. Guardar en docs/raw-check/ ambos archivos para comparación visual
     let raw_check_dir = std::path::Path::new("../docs/raw-check");
     fs::create_dir_all(&raw_check_dir).expect("Create docs/raw-check directory");
 
     let out_preview = raw_check_dir.join("preview_embebido.jpg");
     fs::write(&out_preview, &embedded_preview_bytes).expect("Write embedded preview");
 
+    // 2. Desarrollar RAW en modo NEUTRO (Antes: sin perfil ajustado)
+    use lumen_lib::commands::raw::{develop_raw_file_with_profile, RawProfileMode, delta_e_lab};
+    let developed_neutral = develop_raw_file_with_profile(nef_path, RawProfileMode::Neutral)
+        .expect("Develop neutral RAW");
+    let out_neutral = raw_check_dir.join("raw_desarrollado_antes_neutro.jpg");
+    developed_neutral.save(&out_neutral).expect("Save developed neutral JPEG");
+
+    // 3. Desarrollar RAW en modo CÁMARA ESTÁNDAR (Después: RCD + Matriz mínimos cuadrados + Curva tonal + Enfoque 25)
+    let developed_standard = develop_raw_file_with_profile(nef_path, RawProfileMode::CameraStandard)
+        .expect("Develop camera standard RAW");
+    let out_standard = raw_check_dir.join("raw_desarrollado_despues_camara_estandar.jpg");
+    developed_standard.save(&out_standard).expect("Save developed camera standard JPEG");
+
+    // Mantener raw_desarrollado.jpg con el nuevo perfil estándar
     let out_developed = raw_check_dir.join("raw_desarrollado.jpg");
-    developed.save(&out_developed).expect("Save developed JPEG");
+    developed_standard.save(&out_developed).expect("Save developed JPEG");
 
-    let meta_preview = fs::metadata(&out_preview).expect("Metadata preview");
-    let meta_developed = fs::metadata(&out_developed).expect("Metadata developed");
+    let preview_img = image::open(&out_preview).expect("Open preview image").to_rgb8();
+    let pw = preview_img.width();
+    let ph = preview_img.height();
+    let dw = developed_standard.width();
+    let dh = developed_standard.height();
 
-    println!("Saved embedded preview to {:?} ({} bytes)", out_preview, meta_preview.len());
-    println!("Saved developed RAW to {:?} ({} bytes)", out_developed, meta_developed.len());
+    let raw = rawloader::decode_file(nef_path).expect("Decode raw");
+    println!("RAW make: {}, model: {}", raw.make, raw.model);
+    println!("RAW wb_coeffs (antes de matriz): {:?}", raw.wb_coeffs);
 
-    assert!(meta_preview.len() > 10_000, "Preview must be valid image file");
-    assert!(meta_developed.len() > 500_000, "Developed 12 MP image must weigh > 500 KB");
+    let crop_x = ((dw.saturating_sub(pw)) / 2).max(raw.crops[1] as u32);
+    let crop_y = ((dh.saturating_sub(ph)) / 2).max(raw.crops[0] as u32);
+    println!("DIMENSIONS: pw={}, ph={}, dw={}, dh={}, crops={:?}", pw, ph, dw, dh, raw.crops);
+
+    // 4. Medir zonas grises/neutras en Preview vs Neutro vs Cámara Estándar
+    let mut neutral_samples = Vec::new();
+    for py in (100..ph - 100).step_by(15) {
+        for px in (100..pw - 100).step_by(15) {
+            let p_pix = preview_img.get_pixel(px, py);
+            let r = p_pix[0] as i32;
+            let g = p_pix[1] as i32;
+            let b = p_pix[2] as i32;
+            if (r - g).abs() <= 2 && (g - b).abs() <= 2 && (r - b).abs() <= 2 && g >= 60 && g <= 200 {
+                let dx = crop_x + px;
+                let dy = crop_y + py;
+                if dx < dw && dy < dh {
+                    let d_neut = developed_neutral.get_pixel(dx, dy);
+                    let d_std = developed_standard.get_pixel(dx, dy);
+                    if d_neut[0] > 0 || d_neut[1] > 0 || d_neut[2] > 0 {
+                        neutral_samples.push((*p_pix, *d_neut, *d_std));
+                    }
+                }
+            }
+        }
+    }
+
+    let n_neut = neutral_samples.len().max(1) as f64;
+    let mut sum_p = [0f64; 3];
+    let mut sum_neut = [0f64; 3];
+    let mut sum_std = [0f64; 3];
+    for (p, neut, std) in &neutral_samples {
+        for c in 0..3 {
+            sum_p[c] += p[c] as f64;
+            sum_neut[c] += neut[c] as f64;
+            sum_std[c] += std[c] as f64;
+        }
+    }
+
+    println!("=======================================================");
+    println!("  MEDICIÓN DE ZONAS NEUTRAS / BALANCE DE BLANCOS");
+    println!("=======================================================");
+    println!("1. Preview embebido:    R={:.1} G={:.1} B={:.1} (Equilibrio neutro)", sum_p[0]/n_neut, sum_p[1]/n_neut, sum_p[2]/n_neut);
+    println!("2. Revelado Neutro:     R={:.1} G={:.1} B={:.1} (Dominante cálida R-B = {:.1})", sum_neut[0]/n_neut, sum_neut[1]/n_neut, sum_neut[2]/n_neut, (sum_neut[0]-sum_neut[2])/n_neut);
+    println!("3. Cámara estándar:     R={:.1} G={:.1} B={:.1} (Corregido R-B = {:.1})", sum_std[0]/n_neut, sum_std[1]/n_neut, sum_std[2]/n_neut, (sum_std[0]-sum_std[2])/n_neut);
+
+    // 5. Medir error medio ΔE (CIELAB) sobre 1.000+ píxeles muestreados no recortados (<2% o >98%)
+    let mut delta_e_neut_sum = 0.0f64;
+    let mut delta_e_std_sum = 0.0f64;
+    let mut sample_count = 0usize;
+
+    for py in (20..ph - 20).step_by(10) {
+        for px in (20..pw - 20).step_by(10) {
+            let p_pix = preview_img.get_pixel(px, py);
+            // Excluir recortados (<2% o >98%)
+            if p_pix[0] < 5 || p_pix[0] > 250 || p_pix[1] < 5 || p_pix[1] > 250 || p_pix[2] < 5 || p_pix[2] > 250 {
+                continue;
+            }
+
+            let dx = crop_x + px;
+            let dy = crop_y + py;
+            if dx >= dw || dy >= dh {
+                continue;
+            }
+
+            let d_neut = developed_neutral.get_pixel(dx, dy);
+            let d_std = developed_standard.get_pixel(dx, dy);
+
+            let de_neut = delta_e_lab((p_pix[0], p_pix[1], p_pix[2]), (d_neut[0], d_neut[1], d_neut[2]));
+            let de_std = delta_e_lab((p_pix[0], p_pix[1], p_pix[2]), (d_std[0], d_std[1], d_std[2]));
+
+            delta_e_neut_sum += de_neut;
+            delta_e_std_sum += de_std;
+            sample_count += 1;
+        }
+    }
+
+    let avg_de_neut = delta_e_neut_sum / sample_count as f64;
+    let avg_de_std = delta_e_std_sum / sample_count as f64;
+    let reduction_pct = ((avg_de_neut - avg_de_std) / avg_de_neut) * 100.0;
+
+    println!("=======================================================");
+    println!("  RESULTADOS COMPARATIVOS DE ERROR COLORIMÉTRICO (ΔE Lab)");
+    println!("  Píxeles válidos analizados: {}", sample_count);
+    println!("=======================================================");
+    println!("  - Error medio ΔE ANTES (Neutro / plano):    {:.2}", avg_de_neut);
+    println!("  - Error medio ΔE DESPUÉS (Cámara estándar): {:.2}", avg_de_std);
+    println!("  - Reducción del error colorimétrico:        {:.1}%", reduction_pct);
+    println!("=======================================================");
+
+    assert!(sample_count >= 1000, "Debe evaluar sobre 1000+ píxeles válidos, encontró {}", sample_count);
+    assert!(avg_de_std < avg_de_neut, "El perfil Cámara estándar debe reducir el error frente al neutro");
+
+    assert!(fs::metadata(&out_preview).unwrap().len() > 10_000, "Preview must be valid image file");
+    assert!(fs::metadata(&out_developed).unwrap().len() > 500_000, "Developed 12 MP image must weigh > 500 KB");
+    assert!(fs::metadata(&out_neutral).unwrap().len() > 500_000, "Neutral 12 MP image must weigh > 500 KB");
+    assert!(fs::metadata(&out_standard).unwrap().len() > 500_000, "Standard 12 MP image must weigh > 500 KB");
 }
 
 #[test]
