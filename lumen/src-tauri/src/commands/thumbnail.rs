@@ -86,3 +86,22 @@ pub async fn get_thumbnail_path(
 
     Ok(output_path.to_string_lossy().to_string())
 }
+
+use rayon::prelude::*;
+
+/// Fast multi-threaded batch thumbnail generation using Rayon thread pool.
+/// Generates thumbnails in parallel across CPU cores without blocking the UI thread.
+pub fn batch_generate_thumbnails_parallel(
+    tasks: Vec<(PathBuf, PathBuf, u32)>, // (source, destination, max_dim)
+) -> Vec<Result<String, String>> {
+    tasks.into_par_iter().map(|(src, dst, max_dim)| {
+        if dst.exists() {
+            return Ok(dst.to_string_lossy().to_string());
+        }
+        let img = image::open(&src).map_err(|e| e.to_string())?;
+        let thumb = img.thumbnail(max_dim, max_dim);
+        thumb.save(&dst).map_err(|e| e.to_string())?;
+        Ok(dst.to_string_lossy().to_string())
+    }).collect()
+}
+

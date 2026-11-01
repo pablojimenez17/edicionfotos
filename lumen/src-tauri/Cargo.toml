@@ -34,6 +34,7 @@ rawloader = "0.37"
 img-parts = "0.4"
 printpdf = "0.7"
 quick-xml = "0.37"
+rayon = "1.10"
 
 [dev-dependencies]
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }

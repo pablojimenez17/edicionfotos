@@ -2213,6 +2213,7 @@ dependencies = [
  "printpdf",
  "quick-xml 0.37.5",
  "rawloader",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

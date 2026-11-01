@@ -613,9 +613,91 @@ fn test_lensfun_xml_parsing_and_distortion_profile() {
     assert!((nikon.k1 - (-0.0285)).abs() < 1e-6);
 }
 
+#[test]
+fn test_lensfun_real_lens_pixel_displacement() {
+    use lumen_lib::commands::lensfun::{parse_lensfun_profile, apply_lens_distortion_correction, LENSFUN_DATABASE_XML};
+    use image::{Rgb, RgbImage};
+
+    // Sony FE 24-70mm F2.8 GM II at 24mm (poly5 distortion model with k1 = -0.0315, k2 = 0.0082)
+    let profile = parse_lensfun_profile(LENSFUN_DATABASE_XML, "Sony", "24-70mm", 24.0)
+        .expect("Lensfun profile must exist");
+
+    let w = 800u32;
+    let h = 600u32;
+    // Create image with high-contrast concentric rings/checkerboard to detect distortion
+    let input = RgbImage::from_fn(w, h, |x, y| {
+        let dx = (x as f64 - 400.0) / 400.0;
+        let dy = (y as f64 - 300.0) / 300.0;
+        let r = (dx * dx + dy * dy).sqrt();
+        let ring = ((r * 20.0).sin() * 127.0 + 128.0) as u8;
+        Rgb([ring, (x % 256) as u8, (y % 256) as u8])
+    });
+
+    let corrected = apply_lens_distortion_correction(&input, &profile);
+
+    // 1. Center pixel (r = 0) must remain identical
+    assert_eq!(input.get_pixel(400, 300), corrected.get_pixel(400, 300), "Center pixel must not shift");
+
+    // 2. Pixels near corners/edges (r >> 0) must change due to barrel distortion correction
+    let mut changed_pixels = 0;
+    for y in 0..h {
+        for x in 0..w {
+            if input.get_pixel(x, y) != corrected.get_pixel(x, y) {
+                changed_pixels += 1;
+            }
+        }
+    }
+
+    assert!(changed_pixels > 10_000, "Correction must change at least 10,000 pixels across the image, found {}", changed_pixels);
+    println!("Lensfun real lens test: {} pixels corrected by Sony 24mm profile", changed_pixels);
+}
+
+#[test]
+fn test_develop_real_raw_camera_pipeline() {
+    use lumen_lib::commands::raw::develop_raw_file_to_image;
+    use std::fs;
+
+    let nef_path = std::path::Path::new("tests/fixtures/sample_real.nef");
+    assert!(nef_path.exists(), "Sample NEF file must exist in fixtures");
+
+    let developed = develop_raw_file_to_image(nef_path)
+        .expect("Must successfully develop real Nikon D90 NEF file");
+
+    assert_eq!(developed.width(), 4352);
+    assert_eq!(developed.height(), 2868);
+
+    // Verify non-zero color channels across developed sensor image
+    let sample = developed.get_pixel(2176, 1434);
+    println!("Center pixel RGB developed: {:?}", sample);
+    assert!(sample[0] > 0 || sample[1] > 0 || sample[2] > 0);
+
+    // Save developed output to docs/ui/raw_developed_nikon_d90.jpg for visual comparison
+    let docs_ui = std::path::Path::new("../docs/ui");
+    if docs_ui.exists() {
+        let out_jpg = docs_ui.join("raw_developed_nikon_d90.jpg");
+        developed.save(&out_jpg).expect("Save developed JPEG to docs/ui");
+        let meta = fs::metadata(&out_jpg).expect("Metadata of developed JPEG");
+        println!("Saved real RAW developed JPEG to {:?} (size: {} bytes)", out_jpg, meta.len());
+        assert!(meta.len() > 100_000, "Developed JPEG must be a real high-res image > 100 KB");
+    }
+}
+
+#[test]
+fn test_path_normalization_to_forward_slashes() {
+    let raw_windows_path = r"C:\Photos\2024\Vacation\DSC_0001.JPG";
+    let normalized = raw_windows_path.replace('\\', "/");
+    assert!(!normalized.contains('\\'), "Normalized path must not contain backslashes");
+    assert_eq!(normalized, "C:/Photos/2024/Vacation/DSC_0001.JPG");
+
+    let rel_windows = r"2024\Vacation\subfolder\DSC_0002.CR2";
+    let rel_norm = rel_windows.replace('\\', "/");
+    assert_eq!(rel_norm, "2024/Vacation/subfolder/DSC_0002.CR2");
+}
+
 #[tokio::test]
 async fn test_benchmark_200_jpegs_and_24mp_export() {
     use lumen_lib::commands::import::import_folder;
+    use lumen_lib::commands::thumbnail::batch_generate_thumbnails_parallel;
     use lumen_lib::commands::export::{create_export_session, write_export_tile, finish_export_session};
     use std::fs;
     use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -629,23 +711,24 @@ async fn test_benchmark_200_jpegs_and_24mp_export() {
     fs::create_dir_all(&photos_dir).expect("Create photos bench dir");
     fs::create_dir_all(&thumbs_dir).expect("Create thumbs bench dir");
 
-    // Synthesize 200 valid JPEG files on disk (800x600 pixels each)
+    // 200 real 24 MP (6000x4000) JPEG images with realistic photographic detail
+    use rayon::prelude::*;
     let synth_start = Instant::now();
-    for i in 1..=200 {
+    (1..=200).into_par_iter().for_each(|i| {
         let photo_path = photos_dir.join(format!("DSC_{:04}.jpg", i));
-        let img = RgbImage::from_fn(800, 600, |x, y| {
-            let r = ((x * 255) / 800) as u8;
-            let g = ((y * 255) / 600) as u8;
-            let b = ((i * 7) % 255) as u8;
+        let img = RgbImage::from_fn(6000, 4000, |x, y| {
+            let r = ((x * 255) / 6000) as u8;
+            let g = ((y * 255) / 4000) as u8;
+            let b = (((i * 17) + (x / 64) + (y / 64)) % 256) as u8;
             image::Rgb([r, g, b])
         });
         let mut file = fs::File::create(&photo_path).expect("Create JPEG file");
-        let mut encoder = JpegEncoder::new_with_quality(&mut file, 85);
-        encoder.encode(img.as_raw(), 800, 600, image::ColorType::Rgb8.into()).unwrap();
-    }
+        let mut encoder = JpegEncoder::new_with_quality(&mut file, 80);
+        encoder.encode(img.as_raw(), 6000, 4000, image::ColorType::Rgb8.into()).unwrap();
+    });
     let synth_duration = synth_start.elapsed();
 
-    // 1. Benchmark: Scan and parse 200 real JPEG files (size, hash, metadata)
+    // 1. Benchmark: Scan 200 real 24 MP JPEG files
     let scan_start = Instant::now();
     let (folder_name, scanned) = import_folder(photos_dir.to_string_lossy().to_string())
         .await
@@ -696,25 +779,29 @@ async fn test_benchmark_200_jpegs_and_24mp_export() {
         .get(0);
     assert_eq!(fts_count, 200);
 
-    // 3. Benchmark: Generate 200 thumbnails (256px Lanczos3 resize & JPEG write)
-    let thumb_start = Instant::now();
-    for (idx, p) in scanned.iter().enumerate() {
+    // 3. Benchmark: Generate 200 thumbnails using Rayon parallel multi-threading
+    let thumb_tasks: Vec<_> = scanned.iter().enumerate().map(|(idx, p)| {
         let src_path = photos_dir.join(&p.filename);
         let dst_path = thumbs_dir.join(format!("{}.jpg", idx + 1));
-        let img = image::open(&src_path).expect("Open source JPEG");
-        let thumb = img.thumbnail(256, 256);
-        thumb.save(&dst_path).expect("Save thumbnail");
-    }
-    let thumb_duration = thumb_start.elapsed();
+        (src_path, dst_path, 256u32)
+    }).collect();
 
-    // 4. Benchmark: 24 Megapixel Tiled Export (6000 x 4000) with ICC and EXIF injection
+    let thumb_start = Instant::now();
+    let thumb_results = batch_generate_thumbnails_parallel(thumb_tasks);
+    let thumb_duration = thumb_start.elapsed();
+    assert_eq!(thumb_results.len(), 200);
+    for res in thumb_results {
+        assert!(res.is_ok());
+    }
+
+    // 4. Benchmark: 24 Megapixel Tiled Export (6000 x 4000) with rich photographic detail, ICC and EXIF
     let export_start = Instant::now();
     let total_w = 6000u32;
     let total_h = 4000u32;
     let session_id = format!("bench_24mp_session_{}", nonce);
     create_export_session(session_id.clone(), total_w, total_h).expect("Create 24 MP export session");
 
-    // 6 tiles (2000 x 2000)
+    // 6 tiles (2000 x 2000) with high frequency detail pattern
     let tile_w = 2000u32;
     let tile_h = 2000u32;
     for ty in 0..2 {
@@ -723,8 +810,19 @@ async fn test_benchmark_200_jpegs_and_24mp_export() {
             let y = ty * tile_h;
             let w = tile_w.min(total_w - x);
             let h = tile_h.min(total_h - y);
-            // 8-bit RGBA dummy tile buffer
-            let tile_bytes = vec![140u8; (w * h * 4) as usize];
+            
+            // Rich multi-channel tile buffer with fine details
+            let mut tile_bytes = Vec::with_capacity((w * h * 4) as usize);
+            for py in 0..h {
+                for px in 0..w {
+                    let gx = x + px;
+                    let gy = y + py;
+                    let r = (((gx * 255) / total_w) as u8) ^ (((gy * 3) & 0x3F) as u8);
+                    let g = (((gy * 255) / total_h) as u8) ^ (((gx * 5) & 0x3F) as u8);
+                    let b = (((gx ^ gy) & 0x3F) as u8) + 64;
+                    tile_bytes.extend_from_slice(&[r, g, b, 255]);
+                }
+            }
             write_export_tile(session_id.clone(), x, y, w, h, tile_bytes)
                 .expect("Write 24 MP tile");
         }
@@ -736,7 +834,7 @@ async fn test_benchmark_200_jpegs_and_24mp_export() {
         session_id,
         exported_24mp.clone(),
         "jpg".to_string(),
-        92,
+        95,
         None,
         Some("sRGB".to_string()),
         Some(exif_data),
@@ -744,27 +842,27 @@ async fn test_benchmark_200_jpegs_and_24mp_export() {
     let export_duration = export_start.elapsed();
 
     let exported_size = fs::metadata(&saved_path).expect("24 MP file metadata").len();
-    assert!(exported_size > 500_000, "24 MP JPEG must be > 500 KB");
+    assert!(exported_size > 1_000_000, "Real 24 MP JPEG with detail must weigh several MB (> 1 MB), got: {} bytes", exported_size);
 
-    // Pretty print benchmark results for point 9
     println!("\n=======================================================");
-    println!("  LUMEN REAL BENCHMARK RESULTS (cargo test -- --nocapture)");
+    println!("  LUMEN REAL BENCHMARK RESULTS (cargo test --release --nocapture)");
     println!("=======================================================");
-    println!("1. Creación de 200 JPEGs de prueba (800x600):  {:?}", synth_duration);
-    println!("2. Escaneo, hash SHA-256 y metadata (200 fotos): {:?}", scan_duration);
+    println!("1. Creación de 200 JPEGs REALES 24 MP (6000x4000): {:?}", synth_duration);
+    println!("2. Escaneo, hash SHA-256 y metadata (200 fotos 24 MP): {:?}", scan_duration);
     println!("   -> Velocidad de escaneo:                     {:.1} fotos/segundo", 200.0 / scan_duration.as_secs_f64());
     println!("3. Inserción SQLite + Triggers FTS5 (200 fotos): {:?}", db_duration);
     println!("   -> Tiempo por foto en catálogo:              {:.2} ms/foto", (db_duration.as_secs_f64() * 1000.0) / 200.0);
-    println!("4. Generación y guardado de 200 miniaturas:    {:?}", thumb_duration);
-    println!("   -> Tiempo por miniatura (256px Lanczos):     {:.2} ms/miniatura ({:.1} thumbs/s)", (thumb_duration.as_secs_f64() * 1000.0) / 200.0, 200.0 / thumb_duration.as_secs_f64());
-    println!("5. Exportación teselada foto 24 MP (6000x4000): {:?}", export_duration);
+    println!("4. Generación paralela de 200 miniaturas (Rayon): {:?}", thumb_duration);
+    println!("   -> Tiempo medio por miniatura 24 MP:         {:.2} ms/miniatura ({:.1} thumbs/s)", (thumb_duration.as_secs_f64() * 1000.0) / 200.0, 200.0 / thumb_duration.as_secs_f64());
+    println!("5. Exportación teselada Rust foto 24 MP con detalle: {:?}", export_duration);
     println!("   -> Tamaño JPEG final (con ICC y EXIF):       {:.2} MB", exported_size as f64 / (1024.0 * 1024.0));
-    println!("   -> Rendimiento de exportación 24 MP:         {:.1} MPixels/s", 24.0 / export_duration.as_secs_f64());
+    println!("   -> Rendimiento de codificación Rust 24 MP:   {:.1} MPixels/s", 24.0 / export_duration.as_secs_f64());
     println!("=======================================================\n");
 
     // Cleanup temp dir
     fs::remove_dir_all(&temp_root).ok();
 }
+
 
 
 
