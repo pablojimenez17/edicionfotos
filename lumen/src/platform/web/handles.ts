@@ -9,13 +9,20 @@ const OPFS_FALLBACK_FLAG = 'lumen_opfs_fallback_notified';
 const fileMemoryRegistry = new Map<string, File>();
 
 export function registerFileInMemory(path: string, file: File): void {
-  const norm = path.replace(/\\/g, '/');
+  const norm = path.replace(/\\/g, '/').replace(/^\/+/, '');
   fileMemoryRegistry.set(norm, file);
+  fileMemoryRegistry.set(file.name, file);
+  const base = path.split('/').pop();
+  if (base) fileMemoryRegistry.set(base, file);
 }
 
 export function getFileFromMemory(path: string): File | undefined {
-  const norm = path.replace(/\\/g, '/');
-  return fileMemoryRegistry.get(norm);
+  const norm = path.replace(/\\/g, '/').replace(/^\/+/, '');
+  const direct = fileMemoryRegistry.get(norm);
+  if (direct) return direct;
+  const base = path.split('/').pop();
+  if (base) return fileMemoryRegistry.get(base);
+  return undefined;
 }
 
 function openIdb(): Promise<IDBDatabase> {
@@ -106,7 +113,7 @@ export async function copyFilesToOpfs(files: File[], folderName: string): Promis
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) {
     // Environment without OPFS: files stay in memory
     for (const f of files) {
-      const vPath = `/web_import/${folderName}/${f.name}`;
+      const vPath = `imported_files/${folderName}/${f.name}`;
       registerFileInMemory(vPath, f);
       savedPaths.push(vPath);
     }
@@ -124,9 +131,10 @@ export async function copyFilesToOpfs(files: File[], folderName: string): Promis
       await writable.write(await file.arrayBuffer());
       await writable.close();
 
-      const opfsPath = `/opfs/imported_files/${folderName}/${file.name}`;
-      registerFileInMemory(opfsPath, file);
-      savedPaths.push(opfsPath);
+      const relPath = `imported_files/${folderName}/${file.name}`;
+      registerFileInMemory(relPath, file);
+      registerFileInMemory(file.name, file);
+      savedPaths.push(relPath);
     }
 
     if (!sessionStorage.getItem(OPFS_FALLBACK_FLAG)) {
@@ -138,7 +146,7 @@ export async function copyFilesToOpfs(files: File[], folderName: string): Promis
   } catch (err: any) {
     console.warn('Error copiando a OPFS, manteniendo en memoria:', err);
     for (const f of files) {
-      const vPath = `/web_import/${folderName}/${f.name}`;
+      const vPath = `imported_files/${folderName}/${f.name}`;
       registerFileInMemory(vPath, f);
       savedPaths.push(vPath);
     }
@@ -148,27 +156,106 @@ export async function copyFilesToOpfs(files: File[], folderName: string): Promis
 }
 
 /**
- * Reads a file from OPFS if it starts with /opfs/
+ * Obtains a File object from OPFS without assuming handmade URL protocols.
+ * Cleans any /opfs/ or /web_import/ prefixes and traverses DirectoryHandles.
  */
-export async function readFileFromOpfs(path: string): Promise<Uint8Array | null> {
+export async function getFileFromOpfs(rawPath: string): Promise<File | null> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return null;
-  if (!path.startsWith('/opfs/')) return null;
 
   try {
-    const relative = path.replace('/opfs/', '');
-    const parts = relative.split('/');
-    const filename = parts.pop()!;
-    let currentDir = await navigator.storage.getDirectory();
+    // Clean string prefixes
+    let clean = rawPath
+      .replace(/\\/g, '/')
+      .replace(/^\/opfs\//, '')
+      .replace(/^opfs:\/\/?/, '')
+      .replace(/^\/web_import\//, '')
+      .replace(/^\/+/, '');
 
-    for (const folder of parts) {
-      currentDir = await currentDir.getDirectoryHandle(folder, { create: false });
+    const root = await navigator.storage.getDirectory();
+
+    // 1. Try direct path walk
+    try {
+      const parts = clean.split('/').filter(Boolean);
+      if (parts.length > 0) {
+        const filename = parts.pop()!;
+        let currentDir = root;
+        let walkOk = true;
+
+        for (const folder of parts) {
+          try {
+            currentDir = await currentDir.getDirectoryHandle(folder, { create: false });
+          } catch {
+            walkOk = false;
+            break;
+          }
+        }
+
+        if (walkOk) {
+          const fileHandle = await currentDir.getFileHandle(filename);
+          return await fileHandle.getFile();
+        }
+      }
+    } catch {
+      // Proceed to fallback search
     }
 
-    const fileHandle = await currentDir.getFileHandle(filename);
-    const file = await fileHandle.getFile();
+    // 2. Fallback: Search by filename in imported_files or previews
+    const filename = clean.split('/').pop();
+    if (!filename) return null;
+
+    // Check imported_files
+    try {
+      const importedDir = await root.getDirectoryHandle('imported_files', { create: false });
+      // Iterate entries in imported_files
+      for await (const [name, handle] of (importedDir as any).entries()) {
+        if (handle.kind === 'file' && name === filename) {
+          return await (handle as FileSystemFileHandle).getFile();
+        } else if (handle.kind === 'directory') {
+          try {
+            const subFile = await (handle as FileSystemDirectoryHandle).getFileHandle(filename);
+            return await subFile.getFile();
+          } catch {
+            // Not in this subfolder
+          }
+        }
+      }
+    } catch {
+      // imported_files might not exist yet
+    }
+
+    // Check previews/thumbs and previews/full
+    try {
+      const previewsDir = await root.getDirectoryHandle('previews', { create: false });
+      for (const sub of ['thumbs', 'full']) {
+        try {
+          const subDir = await previewsDir.getDirectoryHandle(sub, { create: false });
+          const fileHandle = await subDir.getFileHandle(filename);
+          return await fileHandle.getFile();
+        } catch {
+          // continue
+        }
+      }
+    } catch {
+      // previews might not exist yet
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('Fallo al obtener archivo de OPFS:', rawPath, err);
+    return null;
+  }
+}
+
+/**
+ * Reads a file from OPFS as bytes.
+ */
+export async function readFileFromOpfs(path: string): Promise<Uint8Array | null> {
+  const file = await getFileFromOpfs(path);
+  if (!file) return null;
+  try {
     return new Uint8Array(await file.arrayBuffer());
   } catch (err) {
-    console.warn('Fallo al leer de OPFS:', path, err);
+    console.warn('Fallo al leer bytes de OPFS:', path, err);
     return null;
   }
 }

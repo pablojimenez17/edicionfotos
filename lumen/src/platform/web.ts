@@ -6,8 +6,10 @@ import type {
   SelectedDirectory,
   ExportSessionParams,
   ExportResult,
+  PreviewSource,
 } from './types';
 import type { Photo, ScanResult, RemovableDrive } from '../types';
+import { isRawFormat } from '../types';
 import { WebSqlDatabase } from './web/db';
 import { INITIAL_MIGRATION_SQL } from './migrationSql';
 import {
@@ -15,6 +17,7 @@ import {
   copyFilesToOpfs,
   registerFileInMemory,
   getFileFromMemory,
+  getFileFromOpfs,
   readFileFromOpfs,
 } from './web/handles';
 import { generateWebThumbnail } from './web/thumbnails';
@@ -51,7 +54,6 @@ export class WebPlatform implements Platform {
   };
 
   private dbInstance: WebSqlDatabase | null = null;
-  private blobUrlMap = new Map<string, string>();
 
   async initDatabase(): Promise<SqlDatabase> {
     if (this.dbInstance) return this.dbInstance;
@@ -270,6 +272,8 @@ export class WebPlatform implements Platform {
     for (const { file, relPath } of fileEntries) {
       const fullVPath = `${rootPath}/${relPath}`.replace(/\/+/g, '/');
       registerFileInMemory(fullVPath, file);
+      registerFileInMemory(relPath, file);
+      registerFileInMemory(file.name, file);
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const isRaw = ['cr2', 'nef', 'arw', 'dng'].includes(ext);
@@ -324,6 +328,33 @@ export class WebPlatform implements Platform {
     };
   }
 
+  private previewSourceCache = new Map<string, {
+    url: string;
+    blob: Blob;
+    bitmap?: ImageBitmap;
+    width: number;
+    height: number;
+    refCount: number;
+    revokeTimer?: any;
+  }>();
+
+  private releasePreviewSource(key: string) {
+    const entry = this.previewSourceCache.get(key);
+    if (!entry) return;
+    entry.refCount--;
+    if (entry.refCount <= 0) {
+      if (entry.revokeTimer) clearTimeout(entry.revokeTimer);
+      entry.revokeTimer = setTimeout(() => {
+        const cur = this.previewSourceCache.get(key);
+        if (cur && cur.refCount <= 0) {
+          URL.revokeObjectURL(cur.url);
+          cur.bitmap?.close();
+          this.previewSourceCache.delete(key);
+        }
+      }, 5000);
+    }
+  }
+
   async readFile(pathOrId: string): Promise<Uint8Array> {
     const blob = await this.readFileAsBlob(pathOrId);
     return new Uint8Array(await blob.arrayBuffer());
@@ -333,9 +364,20 @@ export class WebPlatform implements Platform {
     const memoryFile = getFileFromMemory(pathOrId);
     if (memoryFile) return memoryFile;
 
+    const opfsFile = await getFileFromOpfs(pathOrId);
+    if (opfsFile) return opfsFile;
+
     const opfsBytes = await readFileFromOpfs(pathOrId);
     if (opfsBytes) {
       return new Blob([opfsBytes as any]);
+    }
+
+    const base = pathOrId.split('/').pop();
+    if (base) {
+      const baseMem = getFileFromMemory(base);
+      if (baseMem) return baseMem;
+      const baseOpfs = await getFileFromOpfs(base);
+      if (baseOpfs) return baseOpfs;
     }
 
     throw new Error(`Archivo no encontrado en almacenamiento web: ${pathOrId}`);
@@ -382,32 +424,135 @@ export class WebPlatform implements Platform {
     return defaultName;
   }
 
-  async getPhotoUrl(photo: Photo): Promise<string> {
+  async getPreviewSource(photoId: number, size: 'thumb' | 'full' = 'full'): Promise<PreviewSource> {
+    const key = `${photoId}_${size}`;
+    const cached = this.previewSourceCache.get(key);
+    if (cached) {
+      if (cached.revokeTimer) {
+        clearTimeout(cached.revokeTimer);
+        cached.revokeTimer = undefined;
+      }
+      cached.refCount++;
+      return {
+        photoId,
+        url: cached.url,
+        bitmap: cached.bitmap,
+        width: cached.width,
+        height: cached.height,
+        release: () => this.releasePreviewSource(key),
+      };
+    }
+
+    const { useCatalogStore } = await import('../stores/catalog');
+    let photo = useCatalogStore.getState().photos.find((p) => p.id === photoId);
+    if (!photo) {
+      try {
+        const db = await this.initDatabase();
+        const rows = await db.select('SELECT * FROM photos WHERE id = ?', [photoId]);
+        if (rows && rows.length > 0) photo = rows[0];
+      } catch (e) {
+        console.warn('Fallo leyendo foto desde db:', e);
+      }
+    }
+    if (!photo) {
+      throw new Error(`Foto con ID ${photoId} no encontrada en el catálogo.`);
+    }
+
     const fullPath = photo.root_path
       ? `${photo.root_path}/${photo.file_path}`.replace(/\/+/g, '/')
       : photo.file_path;
 
-    const existing = this.blobUrlMap.get(fullPath);
-    if (existing) return existing;
+    let targetBlob: Blob | null = null;
 
-    try {
-      const blob = await this.readFileAsBlob(fullPath);
-      const url = URL.createObjectURL(blob);
-      this.blobUrlMap.set(fullPath, url);
-      return url;
-    } catch {
-      // Return placeholder SVG data URI
-      return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="%2327272a"/><text x="50%" y="50%" fill="%23a1a1aa" font-family="sans-serif" font-size="14" text-anchor="middle" dominant-baseline="middle">Lumen Web</text></svg>';
+    if (size === 'thumb') {
+      // 1. Try reading thumbnail from OPFS
+      const thumbFile = await getFileFromOpfs(`previews/thumbs/${photoId}.jpg`);
+      if (thumbFile) {
+        targetBlob = thumbFile;
+      } else {
+        // Find original source file to generate thumbnail
+        let originalBlob: Blob | null = null;
+        try {
+          originalBlob = await this.readFileAsBlob(fullPath);
+        } catch {
+          const directFile = getFileFromMemory(photo.filename) || (await getFileFromOpfs(photo.filename));
+          if (directFile) originalBlob = directFile;
+        }
+
+        if (originalBlob) {
+          const thumbUrl = await generateWebThumbnail(photoId, originalBlob, 320);
+          const resp = await fetch(thumbUrl);
+          targetBlob = await resp.blob();
+        }
+      }
+    } else {
+      // size === 'full'
+      let originalBlob: Blob | null = null;
+      try {
+        originalBlob = await this.readFileAsBlob(fullPath);
+      } catch {
+        const directFile = getFileFromMemory(photo.filename) || (await getFileFromOpfs(photo.filename));
+        if (directFile) originalBlob = directFile;
+      }
+
+      if (!originalBlob) {
+        throw new Error(`No se pudo leer el archivo de la foto "${photo.filename}". Verifica que el archivo exista en OPFS o vuelve a importarlo.`);
+      }
+
+      const isRaw = isRawFormat(photo.format || photo.filename);
+      if (isRaw) {
+        const rawPrev = await extractWebRawPreview(originalBlob, photo.filename);
+        targetBlob = rawPrev.blob;
+      } else {
+        targetBlob = originalBlob;
+      }
     }
+
+    if (!targetBlob) {
+      throw new Error(`No se pudo obtener recurso visual para la foto "${photo.filename}".`);
+    }
+
+    let bitmap: ImageBitmap | undefined;
+    try {
+      if (typeof createImageBitmap === 'function') {
+        bitmap = await createImageBitmap(targetBlob);
+      }
+    } catch (e) {
+      console.warn('createImageBitmap falló, continuando con Blob URL:', e);
+    }
+
+    const url = URL.createObjectURL(targetBlob);
+    const width = bitmap?.width || photo.width || 320;
+    const height = bitmap?.height || photo.height || 240;
+
+    const entry = {
+      url,
+      blob: targetBlob,
+      bitmap,
+      width,
+      height,
+      refCount: 1,
+    };
+    this.previewSourceCache.set(key, entry);
+
+    return {
+      photoId,
+      url,
+      bitmap,
+      width,
+      height,
+      release: () => this.releasePreviewSource(key),
+    };
+  }
+
+  async getPhotoUrl(photo: Photo): Promise<string> {
+    const prev = await this.getPreviewSource(photo.id, 'full');
+    return prev.url;
   }
 
   async generateThumbnail(source: { photoId: number; filePath: string }): Promise<string> {
-    try {
-      const blob = await this.readFileAsBlob(source.filePath);
-      return generateWebThumbnail(source.photoId, blob, 320);
-    } catch {
-      return this.getPhotoUrl({ id: source.photoId, file_path: source.filePath } as any);
-    }
+    const prev = await this.getPreviewSource(source.photoId, 'thumb');
+    return prev.url;
   }
 
   async extractRawPreview(source: { filePath: string }): Promise<{ blob: Blob; url: string }> {

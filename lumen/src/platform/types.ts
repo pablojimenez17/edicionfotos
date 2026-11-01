@@ -64,6 +64,15 @@ export interface ExportResult {
   durationMs: number;
 }
 
+export interface PreviewSource {
+  photoId: number;
+  url: string;
+  bitmap?: ImageBitmap;
+  width: number;
+  height: number;
+  release: () => void;
+}
+
 export interface Platform {
   name: 'tauri' | 'web';
   capabilities: PlatformCapabilities;
@@ -95,6 +104,9 @@ export interface Platform {
 
   /** Save file (native direct write or browser SaveFilePicker / download) */
   saveFile(data: Uint8Array | Blob, defaultName: string, extensions?: string[]): Promise<string>;
+
+  /** Centralized preview and display resource loader for Grid, Loupe, Filmstrip and Develop */
+  getPreviewSource(photoId: number, size?: 'thumb' | 'full'): Promise<PreviewSource>;
 
   /** Get a displayable URL (asset:// or blob:) for a photo thumbnail/preview */
   getPhotoUrl(photo: Photo): Promise<string>;

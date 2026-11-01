@@ -9,6 +9,8 @@ import {
   setStackTop,
 } from '../../services/catalog';
 import { ImportModal } from './ImportModal';
+import { getPreviewSource, type PreviewSource } from '../../platform';
+import { PhotoErrorState } from '../../components/PhotoErrorState';
 import type { Photo } from '../../types';
 
 const COLOR_MAP: Record<string, string> = {
@@ -385,8 +387,54 @@ function PhotoCard({
   onContextMenu,
 }: PhotoCardProps) {
   const imgRef = useRef<HTMLImageElement>(null);
-  const src = photo.thumbnailUrl || '';
-  const showPlaceholder = !src;
+  const [thumbSrc, setThumbSrc] = useState<string>(photo.thumbnailUrl || '');
+  const [hasError, setHasError] = useState(false);
+  const [errorReason, setErrorReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    let previewSource: PreviewSource | null = null;
+
+    if (!photo.thumbnailUrl) {
+      getPreviewSource(photo.id, 'thumb')
+        .then((src) => {
+          if (!isCurrent) {
+            src.release();
+            return;
+          }
+          previewSource = src;
+          setThumbSrc(src.url);
+          setHasError(false);
+        })
+        .catch((err) => {
+          if (!isCurrent) return;
+          console.error('Error cargando miniatura en Cuadrícula:', photo.filename, err);
+          setErrorReason(err?.message || 'Error al cargar');
+          setHasError(true);
+        });
+    } else {
+      setThumbSrc(photo.thumbnailUrl);
+    }
+
+    return () => {
+      isCurrent = false;
+      previewSource?.release();
+    };
+  }, [photo.id, photo.thumbnailUrl]);
+
+  const handleRetry = () => {
+    setHasError(false);
+    setErrorReason(null);
+    getPreviewSource(photo.id, 'thumb')
+      .then((src) => {
+        setThumbSrc(src.url);
+      })
+      .catch((err) => {
+        console.error('Error reintentando miniatura en Cuadrícula:', err);
+        setErrorReason(err?.message || 'Fallo al reintentar');
+        setHasError(true);
+      });
+  };
 
   return (
     <div
@@ -434,7 +482,9 @@ function PhotoCard({
         )}
       </div>
 
-      {showPlaceholder ? (
+      {hasError ? (
+        <PhotoErrorState compact reason={errorReason || undefined} onRetry={handleRetry} />
+      ) : !thumbSrc ? (
         <div
           style={{
             width: '100%',
@@ -452,9 +502,14 @@ function PhotoCard({
         <img
           ref={imgRef}
           className="photo-cell__img"
-          src={src}
+          src={thumbSrc}
           alt={photo.filename}
           loading="lazy"
+          onError={() => {
+            console.error('Error al cargar imagen en celda de cuadrícula:', photo.filename, thumbSrc);
+            setHasError(true);
+            setErrorReason('Error de decodificación de imagen');
+          }}
         />
       )}
 

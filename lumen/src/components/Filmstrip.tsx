@@ -1,6 +1,117 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useCatalogStore, useFilteredPhotos } from '../stores/catalog';
 import { useUiStore } from '../stores/ui';
+import { getPreviewSource, type PreviewSource } from '../platform';
+import type { Photo } from '../types';
+
+interface FilmstripThumbProps {
+  photo: Photo;
+  isActive: boolean;
+  onSelect: () => void;
+}
+
+function FilmstripThumb({ photo, isActive, onSelect }: FilmstripThumbProps) {
+  const [thumbUrl, setThumbUrl] = useState<string>(photo.thumbnailUrl || '');
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    let isCurrent = true;
+    let source: PreviewSource | null = null;
+
+    if (!photo.thumbnailUrl) {
+      getPreviewSource(photo.id, 'thumb')
+        .then((s) => {
+          if (!isCurrent) {
+            s.release();
+            return;
+          }
+          source = s;
+          setThumbUrl(s.url);
+          setHasError(false);
+        })
+        .catch((err) => {
+          if (!isCurrent) return;
+          console.error('Error cargando miniatura en Filmstrip:', photo.filename, err);
+          setHasError(true);
+        });
+    } else {
+      setThumbUrl(photo.thumbnailUrl);
+    }
+
+    return () => {
+      isCurrent = false;
+      source?.release();
+    };
+  }, [photo.id, photo.thumbnailUrl]);
+
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        flex: '0 0 74px',
+        height: '64px',
+        backgroundColor: '#1c1c1f',
+        borderRadius: '3px',
+        border: isActive ? '2px solid #3b82f6' : '1px solid #27272a',
+        overflow: 'hidden',
+        position: 'relative',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {hasError ? (
+        <div style={{ fontSize: '10px', color: '#ef4444' }}>⚠️ Error</div>
+      ) : thumbUrl ? (
+        <img
+          src={thumbUrl}
+          alt={photo.filename}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onError={() => {
+            console.error('Error cargando imagen en Filmstrip:', photo.filename);
+            setHasError(true);
+          }}
+        />
+      ) : (
+        <div style={{ fontSize: '10px', color: '#52525b' }}>IMG</div>
+      )}
+
+      {/* Star rating overlay */}
+      {photo.rating > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '2px',
+            left: '2px',
+            fontSize: '9px',
+            color: '#eab308',
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            padding: '0 3px',
+            borderRadius: '2px',
+          }}
+        >
+          {'★'.repeat(photo.rating)}
+        </div>
+      )}
+
+      {/* Flag badge */}
+      {photo.flag !== 'none' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '2px',
+            left: '2px',
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            backgroundColor: photo.flag === 'pick' ? '#22c55e' : '#ef4444',
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 export function Filmstrip() {
   const photos = useFilteredPhotos();
@@ -85,64 +196,12 @@ export function Filmstrip() {
         {photos.map((photo) => {
           const isActive = photo.id === activePhotoId;
           return (
-            <div
-              key={photo.id}
-              ref={isActive ? activeThumbRef : null}
-              onClick={() => setActivePhotoId(photo.id)}
-              style={{
-                flex: '0 0 74px',
-                height: '64px',
-                backgroundColor: '#1c1c1f',
-                borderRadius: '3px',
-                border: isActive ? '2px solid #3b82f6' : '1px solid #27272a',
-                overflow: 'hidden',
-                position: 'relative',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {photo.thumbnailUrl ? (
-                <img
-                  src={photo.thumbnailUrl}
-                  alt={photo.filename}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div style={{ fontSize: '10px', color: '#52525b' }}>IMG</div>
-              )}
-              {/* Star rating overlay */}
-              {photo.rating > 0 && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: '2px',
-                    left: '2px',
-                    fontSize: '9px',
-                    color: '#eab308',
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    padding: '0 3px',
-                    borderRadius: '2px',
-                  }}
-                >
-                  {'★'.repeat(photo.rating)}
-                </div>
-              )}
-              {/* Flag badge */}
-              {photo.flag !== 'none' && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: '2px',
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    backgroundColor: photo.flag === 'pick' ? '#22c55e' : '#ef4444',
-                  }}
-                />
-              )}
+            <div key={photo.id} ref={isActive ? activeThumbRef : null}>
+              <FilmstripThumb
+                photo={photo}
+                isActive={isActive}
+                onSelect={() => setActivePhotoId(photo.id)}
+              />
             </div>
           );
         })}

@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useCatalogStore, useFilteredPhotos } from '../../stores/catalog';
 import { useUiStore } from '../../stores/ui';
-import { convertFileSrc } from '../../services/catalog';
+import { getPreviewSource, type PreviewSource } from '../../platform';
+import { PhotoErrorState } from '../../components/PhotoErrorState';
 
 export function LoupeView() {
   const activePhotoId = useCatalogStore((s) => s.activePhotoId);
@@ -16,13 +17,81 @@ export function LoupeView() {
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showInfoOverlay, setShowInfoOverlay] = useState(true);
 
+  // Preview source state
+  const [preview, setPreview] = useState<PreviewSource | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Reset zoom on active photo change
   useEffect(() => {
     setZoomLevel('fit');
     setPan({ x: 0, y: 0 });
   }, [activePhotoId]);
+
+  // Load preview source from centralized platform service
+  useEffect(() => {
+    if (!activePhotoId) {
+      setPreview(null);
+      setError(null);
+      return;
+    }
+
+    let isCurrent = true;
+    let loadedSource: PreviewSource | null = null;
+    setLoading(true);
+    setError(null);
+
+    getPreviewSource(activePhotoId, 'full')
+      .then((src) => {
+        if (!isCurrent) {
+          src.release();
+          return;
+        }
+        loadedSource = src;
+        setPreview(src);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!isCurrent) return;
+        const msg = err?.message || 'Error desconocido al cargar el archivo de imagen';
+        console.error('Error cargando foto en Lupa:', err);
+        setError(msg);
+        setLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+      if (loadedSource) {
+        loadedSource.release();
+      }
+    };
+  }, [activePhotoId, retryCount]);
+
+  // Draw on canvas whenever preview, zoom, or pan updates
+  useEffect(() => {
+    if (!preview || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Use bitmap if present, or let image handle it
+    const drawTarget = preview.bitmap || imgRef.current;
+    if (!drawTarget) return;
+
+    const natW = preview.bitmap ? preview.bitmap.width : (imgRef.current?.naturalWidth || preview.width || 800);
+    const natH = preview.bitmap ? preview.bitmap.height : (imgRef.current?.naturalHeight || preview.height || 600);
+
+    canvas.width = natW;
+    canvas.height = natH;
+
+    ctx.clearRect(0, 0, natW, natH);
+    ctx.drawImage(drawTarget, 0, 0, natW, natH);
+  }, [preview, zoomLevel, pan]);
 
   // Navigate left/right photos
   const handleNextPhoto = useCallback(() => {
@@ -54,7 +123,6 @@ export function LoupeView() {
       } else if (e.key === 'Escape') {
         useUiStore.getState().setLibraryView('grid');
       } else if (e.key === ' ') {
-        // Toggle zoom with Spacebar
         e.preventDefault();
         setZoomLevel((prev) => (prev === 'fit' ? 1 : 'fit'));
         setPan({ x: 0, y: 0 });
@@ -83,7 +151,6 @@ export function LoupeView() {
     setIsPanning(false);
   };
 
-  // Double click toggles fit / 1:1
   const handleDoubleClick = () => {
     setZoomLevel((prev) => (prev === 'fit' ? 1 : 'fit'));
     setPan({ x: 0, y: 0 });
@@ -99,10 +166,6 @@ export function LoupeView() {
       </div>
     );
   }
-
-  const rootPath = activePhoto.root_path || '';
-  const fullPath = rootPath ? `${rootPath}/${activePhoto.file_path}` : activePhoto.file_path;
-  const imageSrc = convertFileSrc(fullPath);
 
   return (
     <div
@@ -125,29 +188,94 @@ export function LoupeView() {
         userSelect: 'none',
       }}
     >
-      {/* Zoomed or fitted image */}
-      <img
-        src={imageSrc}
-        alt={activePhoto.filename}
-        onError={(e) => {
-          // Fallback to thumbnail if high-res fails
-          if (activePhoto.thumbnailUrl && e.currentTarget.src !== activePhoto.thumbnailUrl) {
-            e.currentTarget.src = activePhoto.thumbnailUrl;
-          }
-        }}
-        style={{
-          maxWidth: zoomLevel === 'fit' ? '96%' : 'none',
-          maxHeight: zoomLevel === 'fit' ? '96%' : 'none',
-          objectFit: zoomLevel === 'fit' ? 'contain' : 'none',
-          transform:
-            zoomLevel === 'fit'
-              ? 'none'
-              : `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`,
-          transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7)',
-          borderRadius: '2px',
-        }}
-      />
+      {/* Error state */}
+      {error && (
+        <PhotoErrorState
+          reason={error}
+          onRetry={() => setRetryCount((c) => c + 1)}
+        />
+      )}
+
+      {/* Loading indicator */}
+      {loading && !error && (
+        <div
+          style={{
+            position: 'absolute',
+            color: '#71717a',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span>Cargando imagen...</span>
+        </div>
+      )}
+
+      {/* Render Canvas & Img when preview is loaded */}
+      {preview && !error && (
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            maxWidth: zoomLevel === 'fit' ? '96%' : 'none',
+            maxHeight: zoomLevel === 'fit' ? '96%' : 'none',
+            transform:
+              zoomLevel === 'fit'
+                ? 'none'
+                : `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`,
+            transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7)',
+            borderRadius: '2px',
+          }}
+        >
+          {/* Main Canvas rendering with exact pixel accuracy */}
+          <canvas
+            id="loupe-canvas"
+            ref={canvasRef}
+            style={{
+              maxWidth: zoomLevel === 'fit' ? '100%' : 'none',
+              maxHeight: zoomLevel === 'fit' ? '88vh' : 'none',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+
+          {/* Hidden/synchronized <img> ensuring complete and naturalWidth are verifiable */}
+          <img
+            id="loupe-img"
+            ref={imgRef}
+            src={preview.url}
+            alt={activePhoto.filename}
+            onLoad={() => {
+              if (canvasRef.current && imgRef.current) {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                if (ctx && (!preview.bitmap || canvas.width === 0)) {
+                  canvas.width = imgRef.current.naturalWidth;
+                  canvas.height = imgRef.current.naturalHeight;
+                  ctx.drawImage(imgRef.current, 0, 0);
+                }
+              }
+            }}
+            onError={(e) => {
+              console.error('Error cargando <img> en Lupa:', e);
+              setError('Fallo al renderizar el recurso de imagen');
+            }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
+      )}
 
       {/* Floating HUD EXIF Overlay (Lightroom 'I' key style) */}
       {showInfoOverlay && (

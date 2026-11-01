@@ -24,3 +24,7 @@ export function getPlatform(): Platform {
 }
 
 export const platform = getPlatform();
+
+export function getPreviewSource(photoId: number, size: 'thumb' | 'full' = 'full') {
+  return getPlatform().getPreviewSource(photoId, size);
+}

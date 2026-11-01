@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 
 import { useCatalogStore, useFilteredPhotos } from '../../stores/catalog';
-import { convertFileSrc } from '../../services/catalog';
+import { getPreviewSource, type PreviewSource } from '../../platform';
+import { PhotoErrorState } from '../../components/PhotoErrorState';
 import type { Photo } from '../../types';
 
 export function CompareView() {
@@ -154,9 +155,48 @@ function ComparePane({
   onSetFlag: (f: 'none' | 'pick' | 'reject') => void;
   onMakeSelect?: () => void;
 }) {
-  const root = photo.root_path || '';
-  const fullPath = root ? `${root}/${photo.file_path}` : photo.file_path;
-  const src = convertFileSrc(fullPath);
+  const [imgUrl, setImgUrl] = useState<string>(photo.thumbnailUrl || '');
+  const [hasError, setHasError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    let source: PreviewSource | null = null;
+
+    getPreviewSource(photo.id, 'full')
+      .then((s) => {
+        if (!isCurrent) {
+          s.release();
+          return;
+        }
+        source = s;
+        setImgUrl(s.url);
+        setHasError(false);
+      })
+      .catch((err) => {
+        if (!isCurrent) return;
+        console.error('Error cargando foto en Comparación:', photo.filename, err);
+        setHasError(true);
+        setErrorMsg(err?.message || 'Error al cargar imagen');
+      });
+
+    return () => {
+      isCurrent = false;
+      source?.release();
+    };
+  }, [photo.id]);
+
+  const handleRetry = () => {
+    setHasError(false);
+    getPreviewSource(photo.id, 'full')
+      .then((s) => {
+        setImgUrl(s.url);
+      })
+      .catch((err) => {
+        console.error('Error al reintentar carga en Comparación:', err);
+        setHasError(true);
+      });
+  };
 
   return (
     <div
@@ -207,17 +247,26 @@ function ComparePane({
         )}
       </div>
 
-      <img
-        src={photo.thumbnailUrl || src}
-        alt={photo.filename}
-        style={{
-          maxWidth: '100%',
-          maxHeight: '84%',
-          objectFit: 'contain',
-          borderRadius: '3px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-        }}
-      />
+      {hasError ? (
+        <PhotoErrorState reason={errorMsg || undefined} onRetry={handleRetry} />
+      ) : (
+        <img
+          src={imgUrl}
+          alt={photo.filename}
+          onError={() => {
+            console.error('Error cargando <img> en Comparación:', photo.filename);
+            setHasError(true);
+            setErrorMsg('Error de carga de imagen');
+          }}
+          style={{
+            maxWidth: '100%',
+            maxHeight: '84%',
+            objectFit: 'contain',
+            borderRadius: '3px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}
+        />
+      )}
 
       {/* Floating Classification Bar */}
       <div

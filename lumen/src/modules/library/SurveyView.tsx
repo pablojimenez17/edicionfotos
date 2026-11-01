@@ -1,5 +1,180 @@
+import { useState, useEffect } from 'react';
 import { useCatalogStore, useFilteredPhotos } from '../../stores/catalog';
-import { convertFileSrc } from '../../services/catalog';
+import { getPreviewSource, type PreviewSource } from '../../platform';
+import { PhotoErrorState } from '../../components/PhotoErrorState';
+import type { Photo } from '../../types';
+
+function SurveyCard({
+  photo,
+  isActive,
+  onSelect,
+  onRemove,
+  onUpdateRating,
+}: {
+  photo: Photo;
+  isActive: boolean;
+  onSelect: () => void;
+  onRemove: () => void;
+  onUpdateRating: (r: number) => void;
+}) {
+  const [imgUrl, setImgUrl] = useState<string>(photo.thumbnailUrl || '');
+  const [hasError, setHasError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    let source: PreviewSource | null = null;
+
+    getPreviewSource(photo.id, 'thumb')
+      .then((s) => {
+        if (!isCurrent) {
+          s.release();
+          return;
+        }
+        source = s;
+        setImgUrl(s.url);
+        setHasError(false);
+      })
+      .catch((err) => {
+        if (!isCurrent) return;
+        console.error('Error cargando miniatura en Encuesta:', photo.filename, err);
+        setHasError(true);
+        setErrorMsg(err?.message || 'Error al cargar imagen');
+      });
+
+    return () => {
+      isCurrent = false;
+      source?.release();
+    };
+  }, [photo.id]);
+
+  const handleRetry = () => {
+    setHasError(false);
+    getPreviewSource(photo.id, 'thumb')
+      .then((s) => {
+        setImgUrl(s.url);
+      })
+      .catch((err) => {
+        console.error('Error al reintentar miniatura en Encuesta:', err);
+        setHasError(true);
+      });
+  };
+
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#18181b',
+        borderRadius: '4px',
+        border: isActive ? '2px solid #3b82f6' : '1px solid #27272a',
+        overflow: 'hidden',
+        padding: '8px',
+      }}
+    >
+      {/* Dismiss / Remove button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        style={{
+          position: 'absolute',
+          top: '8px',
+          right: '8px',
+          width: '22px',
+          height: '22px',
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          border: '1px solid #3f3f46',
+          borderRadius: '50%',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '11px',
+          zIndex: 2,
+        }}
+        title="Retirar de la encuesta"
+      >
+        ✕
+      </button>
+
+      {hasError ? (
+        <PhotoErrorState
+          reason={errorMsg || 'No se pudo cargar'}
+          onRetry={handleRetry}
+          compact={true}
+        />
+      ) : (
+        <img
+          src={imgUrl}
+          alt={photo.filename}
+          onError={() => {
+            console.error('Error de renderizado de imagen en Encuesta para foto:', photo.filename);
+            setHasError(true);
+            setErrorMsg('Error al decodificar la imagen');
+          }}
+          style={{
+            maxWidth: '100%',
+            maxHeight: '80%',
+            objectFit: 'contain',
+            borderRadius: '2px',
+          }}
+        />
+      )}
+
+      {/* Rating & filename */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          width: '100%',
+          marginTop: '6px',
+          fontSize: '11px',
+          color: '#a1a1aa',
+        }}
+      >
+        <span
+          title={photo.filename}
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: '65%',
+          }}
+        >
+          {photo.filename}
+        </span>
+        <div style={{ display: 'flex', gap: '2px' }}>
+          {[1, 2, 3, 4, 5].map((s) => (
+            <button
+              key={s}
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdateRating(photo.rating === s ? 0 : s);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: s <= photo.rating ? '#eab308' : '#3f3f46',
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: '12px',
+              }}
+            >
+              ★
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function SurveyView() {
   const photos = useFilteredPhotos();
@@ -10,9 +185,10 @@ export function SurveyView() {
   const updatePhoto = useCatalogStore((s) => s.updatePhoto);
 
   // If there is an explicit selection, show selected photos; otherwise show first 4 photos
-  const surveyPhotos = selectedPhotoIds.size > 0
-    ? photos.filter((p) => selectedPhotoIds.has(p.id))
-    : photos.slice(0, 4);
+  const surveyPhotos =
+    selectedPhotoIds.size > 0
+      ? photos.filter((p) => selectedPhotoIds.has(p.id))
+      : photos.slice(0, 4);
 
   if (surveyPhotos.length === 0) {
     return (
@@ -62,107 +238,16 @@ export function SurveyView() {
           overflowY: 'auto',
         }}
       >
-        {surveyPhotos.map((photo) => {
-          const isActive = photo.id === activePhotoId;
-          const root = photo.root_path || '';
-          const fullPath = root ? `${root}/${photo.file_path}` : photo.file_path;
-          const src = convertFileSrc(fullPath);
-
-          return (
-            <div
-              key={photo.id}
-              onClick={() => setActivePhotoId(photo.id)}
-              style={{
-                position: 'relative',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#18181b',
-                borderRadius: '4px',
-                border: isActive ? '2px solid #3b82f6' : '1px solid #27272a',
-                overflow: 'hidden',
-                padding: '8px',
-              }}
-            >
-              {/* Dismiss / Remove button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePhotoSelection(photo.id);
-                }}
-                style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  width: '22px',
-                  height: '22px',
-                  backgroundColor: 'rgba(0,0,0,0.7)',
-                  border: '1px solid #3f3f46',
-                  borderRadius: '50%',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '11px',
-                  zIndex: 2,
-                }}
-                title="Retirar de la encuesta"
-              >
-                ✕
-              </button>
-
-              <img
-                src={photo.thumbnailUrl || src}
-                alt={photo.filename}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '80%',
-                  objectFit: 'contain',
-                  borderRadius: '2px',
-                }}
-              />
-
-              {/* Rating & filename */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  marginTop: '6px',
-                  fontSize: '11px',
-                  color: '#a1a1aa',
-                }}
-              >
-                <span title={photo.filename} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>
-                  {photo.filename}
-                </span>
-                <div style={{ display: 'flex', gap: '2px' }}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <button
-                      key={s}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updatePhoto(photo.id, { rating: photo.rating === s ? 0 : s });
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: s <= photo.rating ? '#eab308' : '#3f3f46',
-                        cursor: 'pointer',
-                        padding: 0,
-                        fontSize: '12px',
-                      }}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {surveyPhotos.map((photo) => (
+          <SurveyCard
+            key={photo.id}
+            photo={photo}
+            isActive={photo.id === activePhotoId}
+            onSelect={() => setActivePhotoId(photo.id)}
+            onRemove={() => togglePhotoSelection(photo.id)}
+            onUpdateRating={(newRating) => updatePhoto(photo.id, { rating: newRating })}
+          />
+        ))}
       </div>
     </div>
   );

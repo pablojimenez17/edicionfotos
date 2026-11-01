@@ -6,6 +6,7 @@ import type {
   SelectedDirectory,
   ExportSessionParams,
   ExportResult,
+  PreviewSource,
 } from './types';
 import type { Photo, ScanResult, RemovableDrive } from '../types';
 import { toast } from '../stores/toast';
@@ -152,6 +153,60 @@ export class TauriPlatform implements Platform {
     const bytes = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data;
     await writeFile(dest, bytes);
     return dest;
+  }
+
+  async getPreviewSource(photoId: number, size: 'thumb' | 'full' = 'full'): Promise<PreviewSource> {
+    const { useCatalogStore } = await import('../stores/catalog');
+    const photo = useCatalogStore.getState().photos.find((p) => p.id === photoId);
+    if (!photo) throw new Error(`Foto con id ${photoId} no encontrada`);
+
+    const fullPath = photo.root_path
+      ? `${photo.root_path}/${photo.file_path}`.replace(/\/+/g, '/')
+      : photo.file_path;
+
+    if (size === 'thumb') {
+      const url = await this.generateThumbnail({ photoId, filePath: fullPath });
+      return {
+        photoId,
+        url,
+        width: 320,
+        height: 240,
+        release: () => {},
+      };
+    }
+
+    const ext = photo.filename.split('.').pop()?.toLowerCase() || '';
+    const isRaw = ['cr2', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2', 'cr3'].includes(ext);
+
+    let url: string;
+    if (isRaw) {
+      const rawPrev = await this.extractRawPreview({ filePath: fullPath });
+      url = rawPrev.url;
+    } else {
+      url = await this.getPhotoUrl(photo);
+    }
+
+    let bitmap: ImageBitmap | undefined;
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        bitmap = await createImageBitmap(blob);
+      }
+    } catch (e) {
+      console.warn('No se pudo crear ImageBitmap en Tauri:', e);
+    }
+
+    return {
+      photoId,
+      url,
+      bitmap,
+      width: bitmap?.width || photo.width || 1920,
+      height: bitmap?.height || photo.height || 1080,
+      release: () => {
+        bitmap?.close();
+      },
+    };
   }
 
   async getPhotoUrl(photo: Photo): Promise<string> {

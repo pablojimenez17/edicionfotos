@@ -3,6 +3,7 @@
  * Operates across Desktop (Tauri) and Web (SQLite-WASM + OPFS) via Platform abstraction.
  */
 import { getPlatform, isTauri as checkIsTauri } from '../platform';
+import { getFileFromMemory } from '../platform/web/handles';
 import { toast } from '../stores/toast';
 import { useCatalogStore } from '../stores/catalog';
 import type { Photo, Folder, RootFolder, ScannedPhoto, ScanResult, RemovableDrive } from '../types';
@@ -380,9 +381,18 @@ async function generateThumbnails() {
  * Convert a file path to a URL that can be used in an <img> or WebGL texture.
  */
 export function convertFileSrc(filePath: string): string {
+  if (!filePath) return '';
+  if (filePath.startsWith('blob:') || filePath.startsWith('data:')) return filePath;
+
   if (checkIsTauri() && typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
     return `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`;
   }
+
+  const mem = getFileFromMemory(filePath);
+  if (mem) {
+    return URL.createObjectURL(mem);
+  }
+
   return filePath;
 }
 
@@ -535,9 +545,17 @@ export async function loadThumbnails() {
   );
 
   for (const preview of previews) {
-    store.updatePhoto(preview.photo_id, {
-      thumbnailUrl: convertFileSrc(preview.cache_path),
-    });
+    try {
+      const src = await getPlatform().getPreviewSource(preview.photo_id, 'thumb');
+      store.updatePhoto(preview.photo_id, {
+        thumbnailUrl: src.url,
+      });
+    } catch {
+      // Fallback
+      store.updatePhoto(preview.photo_id, {
+        thumbnailUrl: convertFileSrc(preview.cache_path),
+      });
+    }
   }
 }
 

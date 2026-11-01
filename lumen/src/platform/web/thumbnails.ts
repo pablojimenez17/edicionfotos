@@ -3,7 +3,7 @@
  * Leverages createImageBitmap with hardware downscaling, EXIF embedded thumbnail extraction,
  * and persistent storage in OPFS.
  */
-import { readFileFromOpfs } from './handles';
+import { getFileFromOpfs } from './handles';
 
 const thumbUrlCache = new Map<number, string>();
 
@@ -45,7 +45,7 @@ export function extractExifThumbnail(bytes: Uint8Array): Uint8Array | null {
 /**
  * Saves thumbnail blob to OPFS cache.
  */
-async function saveThumbToOpfs(photoId: number, blob: Blob): Promise<string | null> {
+export async function saveThumbToOpfs(photoId: number, blob: Blob): Promise<string | null> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return null;
   try {
     const root = await navigator.storage.getDirectory();
@@ -55,7 +55,7 @@ async function saveThumbToOpfs(photoId: number, blob: Blob): Promise<string | nu
     const writable = await (fileHandle as any).createWritable();
     await writable.write(await blob.arrayBuffer());
     await writable.close();
-    return `/opfs/previews/thumbs/${photoId}.jpg`;
+    return `previews/thumbs/${photoId}.jpg`;
   } catch (err) {
     console.warn('No se pudo guardar miniatura en OPFS:', err);
     return null;
@@ -74,23 +74,26 @@ export async function generateWebThumbnail(
   if (cached) return cached;
 
   // 1. Try reading existing cached thumbnail from OPFS
-  const opfsThumbBytes = await readFileFromOpfs(`/opfs/previews/thumbs/${photoId}.jpg`);
-  if (opfsThumbBytes) {
-    const blob = new Blob([opfsThumbBytes as any], { type: 'image/jpeg' });
-    const url = URL.createObjectURL(blob);
+  const thumbFile = await getFileFromOpfs(`previews/thumbs/${photoId}.jpg`);
+  if (thumbFile) {
+    const url = URL.createObjectURL(thumbFile);
     thumbUrlCache.set(photoId, url);
     return url;
   }
 
   // 2. Try fast EXIF thumbnail extraction
-  const arrayBuffer = await sourceBlob.arrayBuffer();
-  const exifThumb = extractExifThumbnail(new Uint8Array(arrayBuffer));
-  if (exifThumb && exifThumb.length > 2000) {
-    const blob = new Blob([exifThumb as any], { type: 'image/jpeg' });
-    await saveThumbToOpfs(photoId, blob);
-    const url = URL.createObjectURL(blob);
-    thumbUrlCache.set(photoId, url);
-    return url;
+  try {
+    const arrayBuffer = await sourceBlob.arrayBuffer();
+    const exifThumb = extractExifThumbnail(new Uint8Array(arrayBuffer));
+    if (exifThumb && exifThumb.length > 2000) {
+      const blob = new Blob([exifThumb as any], { type: 'image/jpeg' });
+      await saveThumbToOpfs(photoId, blob);
+      const url = URL.createObjectURL(blob);
+      thumbUrlCache.set(photoId, url);
+      return url;
+    }
+  } catch (e) {
+    console.warn('Fallo leyendo EXIF de sourceBlob:', e);
   }
 
   // 3. Fallback: downscale with createImageBitmap or offscreen canvas

@@ -3,8 +3,8 @@ import { useCatalogStore } from '../../stores/catalog';
 import { useDevelopStore } from '../../stores/develop';
 import { useUiStore } from '../../stores/ui';
 import { DevelopPipeline } from '../../services/webgl/pipeline';
-import { convertFileSrc } from '../../services/catalog';
-import { platform } from '../../platform';
+import { platform, getPreviewSource, type PreviewSource } from '../../platform';
+import { PhotoErrorState } from '../../components/PhotoErrorState';
 
 export function DevelopCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -35,12 +35,15 @@ export function DevelopCanvas() {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  const [pipelineReady, setPipelineReady] = useState(false);
+
   // Initialize WebGL2 Pipeline on mount
   useEffect(() => {
     if (!canvasRef.current) return;
     try {
       const pipeline = new DevelopPipeline(canvasRef.current);
       pipelineRef.current = pipeline;
+      setPipelineReady(true);
     } catch (err) {
       console.error('Failed to initialize WebGL2 DevelopPipeline:', err);
     }
@@ -48,6 +51,7 @@ export function DevelopCanvas() {
     return () => {
       pipelineRef.current?.destroy();
       pipelineRef.current = null;
+      setPipelineReady(false);
     };
   }, []);
 
@@ -70,30 +74,60 @@ export function DevelopCanvas() {
   }, [clippingWarnings, showBeforeAfter, settings, originalSettings]);
 
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+
   // Load new active photo
   useEffect(() => {
     if (!activePhoto || !pipelineRef.current) return;
-    const root = activePhoto.root_path || '';
-    const fullPath = root ? `${root}/${activePhoto.file_path}` : activePhoto.file_path;
-    const url = convertFileSrc(fullPath);
+    let isCurrent = true;
+    let currentSource: PreviewSource | null = null;
+    setLoadError(null);
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      if (!pipelineRef.current || !canvasRef.current) return;
-      canvasRef.current.width = img.width;
-      canvasRef.current.height = img.height;
-      pipelineRef.current.loadSourceImage(img).then(() => {
-        pipelineRef.current?.render(showBeforeAfter ? originalSettings : settings);
+    getPreviewSource(activePhoto.id, 'full')
+      .then(async (source) => {
+        if (!isCurrent) {
+          source.release();
+          return;
+        }
+        currentSource = source;
+
+        if (source.bitmap) {
+          if (!pipelineRef.current || !canvasRef.current) return;
+          canvasRef.current.width = source.bitmap.width;
+          canvasRef.current.height = source.bitmap.height;
+          await pipelineRef.current.loadSourceImage(source.bitmap);
+          pipelineRef.current.render(showBeforeAfter ? originalSettings : settings);
+        } else {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            if (!pipelineRef.current || !canvasRef.current || !isCurrent) return;
+            canvasRef.current.width = img.width;
+            canvasRef.current.height = img.height;
+            pipelineRef.current.loadSourceImage(img).then(() => {
+              pipelineRef.current?.render(showBeforeAfter ? originalSettings : settings);
+            });
+          };
+          img.onerror = (e) => {
+            if (!isCurrent) return;
+            console.error('Error cargando textura WebGL en Revelado:', e);
+            setLoadError('Fallo al cargar la imagen en el procesador gráfico');
+          };
+          img.src = source.url;
+        }
+      })
+      .catch((err) => {
+        if (!isCurrent) return;
+        console.error('Error cargando foto en Revelado:', err);
+        setLoadError(err?.message || 'Error al obtener la imagen');
       });
+
+    return () => {
+      isCurrent = false;
+      currentSource?.release();
     };
-    img.onerror = () => {
-      if (activePhoto.thumbnailUrl && img.src !== activePhoto.thumbnailUrl) {
-        img.src = activePhoto.thumbnailUrl;
-      }
-    };
-    img.src = url;
-  }, [activePhotoId]);
+  }, [activePhotoId, retryKey, pipelineReady]);
 
   // Re-render when settings or before/after change
   useEffect(() => {
@@ -156,9 +190,18 @@ export function DevelopCanvas() {
         userSelect: 'none',
       }}
     >
+      {loadError && (
+        <PhotoErrorState
+          reason={loadError}
+          onRetry={() => setRetryKey((k) => k + 1)}
+        />
+      )}
+
       <canvas
+        id="develop-canvas"
         ref={canvasRef}
         style={{
+          display: loadError ? 'none' : 'block',
           maxWidth: zoom === 'fit' ? '96%' : 'none',
           maxHeight: zoom === 'fit' ? '96%' : 'none',
           objectFit: zoom === 'fit' ? 'contain' : 'none',
