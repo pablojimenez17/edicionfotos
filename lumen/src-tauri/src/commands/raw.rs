@@ -270,3 +270,203 @@ pub async fn decode_raw_16bit(file_path: String) -> Result<RawDecoded16Bit, Stri
     decode_raw_file_metadata(path)
 }
 
+/// Inverts a 3x3 matrix
+fn invert_3x3(m: &[[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+
+    if det.abs() < 1e-8 {
+        return None;
+    }
+
+    let inv_det = 1.0 / det;
+    Some([
+        [
+            (m[1][1] * m[2][2] - m[1][2] * m[2][1]) * inv_det,
+            (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * inv_det,
+            (m[0][1] * m[1][2] - m[0][2] * m[1][1]) * inv_det,
+        ],
+        [
+            (m[1][2] * m[2][0] - m[1][0] * m[2][2]) * inv_det,
+            (m[0][0] * m[2][2] - m[0][2] * m[2][0]) * inv_det,
+            (m[0][2] * m[1][0] - m[0][0] * m[1][2]) * inv_det,
+        ],
+        [
+            (m[1][0] * m[2][1] - m[1][1] * m[2][0]) * inv_det,
+            (m[0][1] * m[2][0] - m[0][0] * m[2][1]) * inv_det,
+            (m[0][0] * m[1][1] - m[0][1] * m[1][0]) * inv_det,
+        ],
+    ])
+}
+
+/// Multiplies two 3x3 matrices: A * B
+fn mul_3x3(a: &[[f32; 3]; 3], b: &[[f32; 3]; 3]) -> [[f32; 3]; 3] {
+    let mut res = [[0.0f32; 3]; 3];
+    for r in 0..3 {
+        for c in 0..3 {
+            res[r][c] = a[r][0] * b[0][c] + a[r][1] * b[1][c] + a[r][2] * b[2][c];
+        }
+    }
+    res
+}
+
+/// Computes Camera RGB to sRGB conversion matrix
+pub fn get_camera_to_srgb_matrix(xyz_to_cam_raw: &[[f32; 3]; 4]) -> [[f32; 3]; 3] {
+    let xyz_to_srgb: [[f32; 3]; 3] = [
+        [3.2404542, -1.5371385, -0.4985314],
+        [-0.9692660, 1.8760108, 0.0415560],
+        [0.0556434, -0.2040259, 1.0572252],
+    ];
+
+    let mut cam_3x3 = [[0.0f32; 3]; 3];
+    let mut sum = 0.0f32;
+    for r in 0..3 {
+        for c in 0..3 {
+            cam_3x3[r][c] = xyz_to_cam_raw[r][c];
+            sum += cam_3x3[r][c].abs();
+        }
+    }
+
+    if sum < 1.0 {
+        return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    }
+
+    if sum > 100.0 {
+        for r in 0..3 {
+            let row_sum = cam_3x3[r][0] + cam_3x3[r][1] + cam_3x3[r][2];
+            if row_sum.abs() > 1e-4 {
+                cam_3x3[r][0] /= row_sum;
+                cam_3x3[r][1] /= row_sum;
+                cam_3x3[r][2] /= row_sum;
+            }
+        }
+    }
+
+    if let Some(cam_to_xyz) = invert_3x3(&cam_3x3) {
+        mul_3x3(&xyz_to_srgb, &cam_to_xyz)
+    } else {
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    }
+}
+
+/// Applies sRGB tone curve / gamma transfer function
+pub fn apply_srgb_tone_curve(v: f32) -> u8 {
+    let clamped = v.clamp(0.0, 1.0);
+    let srgb = if clamped <= 0.0031308 {
+        12.92 * clamped
+    } else {
+        1.055 * clamped.powf(1.0 / 2.4) - 0.055
+    };
+    (srgb * 255.0).round().clamp(0.0, 255.0) as u8
+}
+
+/// Complete RAW development pipeline from sensor raw file to developed RGB image:
+/// 1. Black & white point normalization
+/// 2. Camera White Balance multipliers
+/// 3. Demosaicing (Bayer CFA -> RGB)
+/// 4. Camera Color Matrix conversion to sRGB
+/// 5. Output gamma / sRGB tone curve
+pub fn develop_raw_file_to_image(file_path: &Path) -> Result<image::RgbImage, String> {
+    let raw = rawloader::decode_file(file_path).map_err(|e| format!("rawloader error: {:?}", e))?;
+    let width = raw.width;
+    let height = raw.height;
+
+    let raw_data = match raw.data {
+        rawloader::RawImageData::Integer(ref v) => v,
+        _ => return Err("Unsupported raw floating point sensor data".to_string()),
+    };
+
+    if raw_data.len() < width * height {
+        return Err(format!("Data buffer size {} is smaller than {}x{}", raw_data.len(), width, height));
+    }
+
+    // 1. WB multipliers relative to Green
+    let g = if raw.wb_coeffs[1] > 0.0 && !raw.wb_coeffs[1].is_nan() { raw.wb_coeffs[1] } else { 1.0 };
+    let wb = [
+        if raw.wb_coeffs[0] > 0.0 && !raw.wb_coeffs[0].is_nan() { raw.wb_coeffs[0] / g } else { 1.0 },
+        1.0,
+        if raw.wb_coeffs[2] > 0.0 && !raw.wb_coeffs[2].is_nan() { raw.wb_coeffs[2] / g } else { 1.0 },
+    ];
+
+    // 2. Color matrix: Camera RGB -> sRGB
+    let matrix = get_camera_to_srgb_matrix(&raw.xyz_to_cam);
+
+    // 3. Pre-normalize sensor data with black & white levels + WB
+    let mut norm_buffer = vec![0.0f32; width * height];
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let c = raw.cfa.color_at(y, x);
+            let b = raw.blacklevels[c.min(3)] as f32;
+            let w = raw.whitelevels[c.min(3)] as f32;
+            let range = (w - b).max(1.0);
+
+            let val = (raw_data[idx] as f32 - b) / range;
+            let val_clamped = val.clamp(0.0, 1.0);
+
+            let wb_mult = match c {
+                0 => wb[0],
+                2 => wb[2],
+                _ => wb[1],
+            };
+
+            norm_buffer[idx] = val_clamped * wb_mult;
+        }
+    }
+
+    // 4. Bilinear demosaicing + Color matrix + sRGB curve
+    let mut out_img = image::RgbImage::new(width as u32, height as u32);
+
+    for y in 1..height - 1 {
+        for x in 1..width - 1 {
+            let idx = y * width + x;
+            let c = raw.cfa.color_at(y, x);
+
+            let (r_cam, g_cam, b_cam) = match c {
+                0 => {
+                    let r = norm_buffer[idx];
+                    let g = (norm_buffer[idx - 1] + norm_buffer[idx + 1] + norm_buffer[idx - width] + norm_buffer[idx + width]) * 0.25;
+                    let b = (norm_buffer[idx - width - 1] + norm_buffer[idx - width + 1] + norm_buffer[idx + width - 1] + norm_buffer[idx + width + 1]) * 0.25;
+                    (r, g, b)
+                }
+                2 => {
+                    let b = norm_buffer[idx];
+                    let g = (norm_buffer[idx - 1] + norm_buffer[idx + 1] + norm_buffer[idx - width] + norm_buffer[idx + width]) * 0.25;
+                    let r = (norm_buffer[idx - width - 1] + norm_buffer[idx - width + 1] + norm_buffer[idx + width - 1] + norm_buffer[idx + width + 1]) * 0.25;
+                    (r, g, b)
+                }
+                _ => {
+                    let g = norm_buffer[idx];
+                    let left_c = raw.cfa.color_at(y, x - 1);
+                    let (r, b) = if left_c == 0 {
+                        let r = (norm_buffer[idx - 1] + norm_buffer[idx + 1]) * 0.5;
+                        let b = (norm_buffer[idx - width] + norm_buffer[idx + width]) * 0.5;
+                        (r, b)
+                    } else {
+                        let b = (norm_buffer[idx - 1] + norm_buffer[idx + 1]) * 0.5;
+                        let r = (norm_buffer[idx - width] + norm_buffer[idx + width]) * 0.5;
+                        (r, b)
+                    };
+                    (r, g, b)
+                }
+            };
+
+            // 5. Apply Camera -> sRGB color matrix
+            let r_srgb_lin = matrix[0][0] * r_cam + matrix[0][1] * g_cam + matrix[0][2] * b_cam;
+            let g_srgb_lin = matrix[1][0] * r_cam + matrix[1][1] * g_cam + matrix[1][2] * b_cam;
+            let b_srgb_lin = matrix[2][0] * r_cam + matrix[2][1] * g_cam + matrix[2][2] * b_cam;
+
+            // 6. Apply sRGB output tone curve
+            let r_byte = apply_srgb_tone_curve(r_srgb_lin);
+            let g_byte = apply_srgb_tone_curve(g_srgb_lin);
+            let b_byte = apply_srgb_tone_curve(b_srgb_lin);
+
+            out_img.put_pixel(x as u32, y as u32, image::Rgb([r_byte, g_byte, b_byte]));
+        }
+    }
+
+    Ok(out_img)
+}
+
+
