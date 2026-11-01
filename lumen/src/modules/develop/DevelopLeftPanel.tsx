@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useCatalogStore } from '../../stores/catalog';
 import { useDevelopStore } from '../../stores/develop';
+import { useUiStore } from '../../stores/ui';
 import { BUILT_IN_PRESETS } from '../../types';
 import { getUserPresets, saveUserPreset, deleteUserPreset } from '../../services/catalog';
 
 export function DevelopLeftPanel() {
+  const leftPanelWidth = useUiStore((s) => s.leftPanelWidth);
   const activePhotoId = useCatalogStore((s) => s.activePhotoId);
   const photos = useCatalogStore((s) => s.photos);
   const activePhoto = photos.find((p) => p.id === activePhotoId) || null;
@@ -96,7 +98,7 @@ export function DevelopLeftPanel() {
   };
 
   return (
-    <div className="side-panel side-panel--left" style={{ width: '250px', overflowY: 'auto' }}>
+    <div className="panel panel--left" style={{ width: `${leftPanelWidth}px`, overflowY: 'auto', flexShrink: 0 }}>
       {/* Navigator Thumbnail */}
       <div className="panel-header">Navegador</div>
       <div style={{ padding: '8px 12px', display: 'flex', justifyContent: 'center' }}>
@@ -198,29 +200,15 @@ export function DevelopLeftPanel() {
 
       {/* Built-in Presets */}
       <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-        <div style={{ fontSize: '10px', color: '#71717a', fontWeight: 600, marginBottom: '2px' }}>
-          INTEGRADOS
+        <div style={{ fontSize: '10px', color: 'var(--color-lumen-muted)', fontWeight: 600, marginBottom: '2px', textTransform: 'uppercase' }}>
+          Integrados
         </div>
         {Object.keys(BUILT_IN_PRESETS).map((presetName) => (
-          <button
+          <PresetItem
             key={presetName}
-            onClick={() => handleApplyPreset(presetName)}
-            style={{
-              textAlign: 'left',
-              backgroundColor: '#1f1f23',
-              border: '1px solid #27272a',
-              borderRadius: '4px',
-              padding: '5px 10px',
-              color: '#d4d4d8',
-              fontSize: '11px',
-              cursor: 'pointer',
-              transition: 'background-color 0.1s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#27272a')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1f1f23')}
-          >
-            {presetName}
-          </button>
+            presetName={presetName}
+            onApply={() => handleApplyPreset(presetName)}
+          />
         ))}
       </div>
 
@@ -456,6 +444,142 @@ export function DevelopLeftPanel() {
                 Guardar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PRESET_INFO: Record<string, { desc: string; bestFor: string; bgGradient: string }> = {
+  Original: {
+    desc: 'Restablece todos los parámetros a la captura inicial sin procesar.',
+    bestFor: 'Punto de partida neutro.',
+    bgGradient: 'linear-gradient(135deg, #3f3f46, #18181b)',
+  },
+  Vivo: {
+    desc: 'Aumento balanceado de saturación, contraste medio y micro-enfoque.',
+    bestFor: 'Paisajes de naturaleza, flores y fotografía de viajes.',
+    bgGradient: 'linear-gradient(135deg, #059669, #0284c7)',
+  },
+  Cálido: {
+    desc: 'Aporte de temperatura dorada (+0.35), matiz ámbar y viñeta suave.',
+    bestFor: 'Atardeceres, sesiones de hora dorada y retratos cálidos.',
+    bgGradient: 'linear-gradient(135deg, #d97706, #b45309)',
+  },
+  Frío: {
+    desc: 'Tonalidad fría (-0.35), contraste limpio y saturación controlada.',
+    bestFor: 'Paisajes de nieve, arquitectura moderna y fotos urbanas nocturnas.',
+    bgGradient: 'linear-gradient(135deg, #0284c7, #1e3a8a)',
+  },
+  'B/N': {
+    desc: 'Conversión monocroma de alto contraste con grano fino y viñeta sutil.',
+    bestFor: 'Fotografía callejera, arquitectura y retratos expresivos.',
+    bgGradient: 'linear-gradient(135deg, #52525b, #09090b)',
+  },
+  Vintage: {
+    desc: 'Negros desvanecidos estilo mate, grano analógico y calidez de película 35mm.',
+    bestFor: 'Fotografía lifestyle, moda retro y sesiones con luz suave.',
+    bgGradient: 'linear-gradient(135deg, #78350f, #3f3f46)',
+  },
+  Cine: {
+    desc: 'Gradación estilo cine con sombras azul-petróleo y luces suaves.',
+    bestFor: 'Fotografía narrativa, retratos nocturnos e iluminación de ciudad.',
+    bgGradient: 'linear-gradient(135deg, #0f766e, #1c1917)',
+  },
+  Mate: {
+    desc: 'Curva tonal con sombras levantadas y contraste reducido.',
+    bestFor: 'Bodas, fotografía editorial y retratos suaves.',
+    bgGradient: 'linear-gradient(135deg, #4b5563, #374151)',
+  },
+  Dramático: {
+    desc: 'Contraste acentuado, sombras profundas, micro-contraste y textura intensa.',
+    bestFor: 'Retratos de carácter, tormentas y fotografía deportiva.',
+    bgGradient: 'linear-gradient(135deg, #18181b, #b91c1c)',
+  },
+};
+
+function PresetItem({ presetName, onApply }: { presetName: string; onApply: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  const info = PRESET_INFO[presetName];
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={onApply}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          backgroundColor: hovered ? 'var(--color-lumen-surface)' : 'var(--color-lumen-card)',
+          border: '1px solid var(--color-lumen-border)',
+          borderRadius: 'var(--radius-xs)',
+          padding: '5px 8px',
+          color: 'var(--color-lumen-text)',
+          fontSize: '11px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          transition: 'background-color 120ms ease',
+        }}
+      >
+        <span
+          style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: '2px',
+            background: info?.bgGradient || 'var(--color-lumen-accent)',
+            flexShrink: 0,
+            display: 'inline-block',
+          }}
+        />
+        <span style={{ fontWeight: 500 }}>{presetName}</span>
+      </button>
+
+      {hovered && info && (
+        <div
+          role="tooltip"
+          style={{
+            position: 'absolute',
+            left: 'calc(100% + 8px)',
+            top: '-10px',
+            width: '210px',
+            backgroundColor: 'var(--color-lumen-card)',
+            border: '1px solid var(--color-lumen-border)',
+            borderRadius: 'var(--radius-sm)',
+            boxShadow: 'var(--shadow-md)',
+            padding: '10px',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            animation: 'fadeIn 100ms ease',
+          }}
+        >
+          {/* Swatch thumbnail */}
+          <div
+            style={{
+              height: '46px',
+              borderRadius: 'var(--radius-xs)',
+              background: info.bgGradient,
+              marginBottom: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 600,
+              fontSize: '10px',
+              letterSpacing: '0.05em',
+              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+            }}
+          >
+            Vista Previa · {presetName}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--color-lumen-text)', lineHeight: 1.4, marginBottom: '6px' }}>
+            {info.desc}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--color-lumen-accent)', lineHeight: 1.3 }}>
+            <strong>Ideal para:</strong> {info.bestFor}
           </div>
         </div>
       )}

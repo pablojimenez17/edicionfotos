@@ -1,8 +1,13 @@
 import { useEffect, useCallback } from 'react';
 import { useUiStore } from './stores/ui';
 import { useCatalogStore } from './stores/catalog';
+import { PanelHelpModal } from './help/PanelHelpModal';
+import { WalkthroughModal } from './components/WalkthroughModal';
+import { ShortcutsModal } from './components/ShortcutsModal';
+import { GlossaryModal } from './components/GlossaryModal';
 import { ModuleBar } from './components/ModuleBar';
 import { Toolbar } from './components/Toolbar';
+import { StatusBar } from './components/StatusBar';
 import { LibraryModule } from './modules/library/LibraryModule';
 import { DevelopModule } from './modules/develop/DevelopModule';
 import { MapModule } from './modules/map/MapModule';
@@ -14,6 +19,12 @@ import { initCatalog } from './services/catalog';
 
 export default function App() {
   const module = useUiStore((s) => s.module);
+  const walkthroughOpen = useUiStore((s) => s.walkthroughOpen);
+  const setWalkthroughOpen = useUiStore((s) => s.setWalkthroughOpen);
+  const shortcutsOpen = useUiStore((s) => s.shortcutsOpen);
+  const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
+  const glossaryOpen = useUiStore((s) => s.glossaryOpen);
+  const setGlossaryOpen = useUiStore((s) => s.setGlossaryOpen);
 
   // Initialize catalog on mount
   useEffect(() => {
@@ -58,8 +69,11 @@ export default function App() {
             return;
           case 'tab':
             e.preventDefault();
-            useUiStore.getState().toggleLeftPanel();
-            useUiStore.getState().toggleRightPanel();
+            useUiStore.getState().togglePanels();
+            return;
+          case '?':
+            e.preventDefault();
+            useUiStore.getState().setShortcutsOpen(true);
             return;
         }
       }
@@ -124,6 +138,11 @@ export default function App() {
         {module === 'print' && <PrintModule />}
         {module === 'web' && <WebModule />}
       </div>
+      <StatusBar />
+      <PanelHelpModal />
+      <WalkthroughModal isOpen={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
+      <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <GlossaryModal isOpen={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
     </div>
   );
 }
