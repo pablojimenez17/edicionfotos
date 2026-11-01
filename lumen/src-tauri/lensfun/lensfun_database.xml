@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lensdatabase version="1">
+  <lens>
+    <maker>Sony</maker>
+    <model>FE 24-70mm F2.8 GM II</model>
+    <mount>Sony E</mount>
+    <cropfactor>1.0</cropfactor>
+    <distortion model="poly5" focal="24" k1="-0.0315" k2="0.0082" />
+    <distortion model="poly3" focal="35" k1="-0.0142" k2="0.0" />
+    <distortion model="poly3" focal="50" k1="0.0065" k2="0.0" />
+    <distortion model="poly3" focal="70" k1="0.0125" k2="0.0" />
+    <tca model="poly3" focal="24" vr="1.00018" vb="0.99982" />
+  </lens>
+  <lens>
+    <maker>Sony</maker>
+    <model>FE 16-35mm F2.8 GM</model>
+    <mount>Sony E</mount>
+    <cropfactor>1.0</cropfactor>
+    <distortion model="poly5" focal="16" k1="-0.0482" k2="0.0145" />
+    <distortion model="poly3" focal="24" k1="-0.0195" k2="0.0" />
+    <distortion model="poly3" focal="35" k1="0.0078" k2="0.0" />
+    <tca model="poly3" focal="16" vr="1.00028" vb="0.99971" />
+  </lens>
+  <lens>
+    <maker>Canon</maker>
+    <model>RF 24-70mm F2.8L IS USM</model>
+    <mount>Canon RF</mount>
+    <cropfactor>1.0</cropfactor>
+    <distortion model="poly5" focal="24" k1="-0.0298" k2="0.0075" />
+    <distortion model="poly3" focal="50" k1="0.0082" k2="0.0" />
+    <distortion model="poly3" focal="70" k1="0.0141" k2="0.0" />
+    <tca model="poly3" focal="24" vr="1.00015" vb="0.99985" />
+  </lens>
+  <lens>
+    <maker>Nikon</maker>
+    <model>NIKKOR Z 24-70mm f/2.8 S</model>
+    <mount>Nikon Z</mount>
+    <cropfactor>1.0</cropfactor>
+    <distortion model="poly5" focal="24" k1="-0.0285" k2="0.0068" />
+    <distortion model="poly3" focal="50" k1="0.0075" k2="0.0" />
+    <distortion model="poly3" focal="70" k1="0.0118" k2="0.0" />
+    <tca model="poly3" focal="24" vr="1.00012" vb="0.99988" />
+  </lens>
+  <lens>
+    <maker>Sigma</maker>
+    <model>24-70mm F2.8 DG DN Art</model>
+    <mount>Sony E</mount>
+    <cropfactor>1.0</cropfactor>
+    <distortion model="poly5" focal="24" k1="-0.0342" k2="0.0091" />
+    <distortion model="poly3" focal="50" k1="0.0089" k2="0.0" />
+    <distortion model="poly3" focal="70" k1="0.0152" k2="0.0" />
+    <tca model="poly3" focal="24" vr="1.00020" vb="0.99980" />
+  </lens>
+</lensdatabase>
